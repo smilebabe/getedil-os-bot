@@ -1,0 +1,26 @@
+{
+  "name": "@getedil/core",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "lint": "echo 'core lint ok'",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@getedil/shared-models": "*",
+    "dotenv": "^17.4.2",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "reflect-metadata": "^0.2.2",
+    "tsyringe": "^4.8.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

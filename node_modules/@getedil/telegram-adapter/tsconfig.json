@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "outDir": "./dist", "rootDir": "./src" },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../shared-models" },
+    { "path": "../core" },
+    { "path": "../ai-engine" },
+    { "path": "../job-marketplace" },
+    { "path": "../learning-domain" }
+  ]
+}

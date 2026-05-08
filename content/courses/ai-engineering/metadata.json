@@ -1,0 +1,14 @@
+{
+  "id": "ai-engineering-101",
+  "title": { "en": "AI Engineering 101", "am": "AI ኢንጂነሪንግ 101" },
+  "description": { "en": "Learn AI fundamentals, prompt engineering, and LLM integration.", "am": "የAI መሰረታዊ ነገሮችን፣ ፕሮምፕት ኢንጂነሪንግን እና LLM ውህደትን ይማሩ።" },
+  "difficulty": "beginner",
+  "estimatedHours": 20,
+  "modules": [
+    { "id": "intro", "title": { "en": "Introduction to AI", "am": "የAI መግቢያ" }, "order": 1 },
+    { "id": "prompt-engineering", "title": { "en": "Prompt Engineering", "am": "ፕሮምፕት ኢንጂነሪንግ" }, "order": 2 },
+    { "id": "vector-databases", "title": { "en": "Vector Databases", "am": "ቬክተር ዳታቤዝ" }, "order": 3 },
+    { "id": "llm-integration", "title": { "en": "LLM Integration", "am": "LLM ውህደት" }, "order": 4 },
+    { "id": "building-apps", "title": { "en": "Building AI Apps", "am": "AI መተግበሪያዎችን መገንባት" }, "order": 5 }
+  ]
+}

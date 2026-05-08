@@ -1,0 +1,34 @@
+{
+  "name": "getedil-os-bot",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "check-types": "turbo run check-types",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:migrate": "supabase migration up",
+    "supabase:seed": "supabase db seed",
+    "docker:build": "docker build -t getedil-bot -f apps/bot/Dockerfile .",
+    "docker:run": "docker run -p 3000:3000 --env-file .env getedil-bot"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "prettier": "^3.2.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0"
+  },
+  "packageManager": "npm@10.4.0",
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}
