@@ -4,7 +4,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const telegraf_1 = require("telegraf");
-const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
@@ -13,7 +12,6 @@ console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
 // Voice Transcriber
 // ============================================
-const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 class VoiceTranscriber {
     async transcribe(fileUrl) {
         const r = await fetch(fileUrl);
@@ -129,7 +127,6 @@ const LESSONS = {
 // ============================================
 // AI
 // ============================================
-const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
 async function aiReply(msg) {
     if (/[\u1200-\u137F]/.test(msg) && process.env.GEMINI_API_KEY) {

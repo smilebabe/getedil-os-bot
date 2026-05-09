@@ -10,7 +10,6 @@ console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
 // Voice Transcriber
 // ============================================
-const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 class VoiceTranscriber {
   async transcribe(fileUrl: string): Promise<{ text: string; language: string }> {
@@ -95,7 +94,6 @@ const LESSONS: Record<string, string> = {
 // ============================================
 // AI
 // ============================================
-const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
 
 async function aiReply(msg: string): Promise<string> {
