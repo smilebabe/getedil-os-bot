@@ -6,13 +6,8 @@ import path from 'path';
 import fs from 'fs';
 import { createServer } from 'http';
 
-// Load .env
-let cwd = process.cwd();
-const root = path.parse(cwd).root;
-while (cwd !== root) {
-  const envPath = path.join(cwd, '.env');
-  if (fs.existsSync(envPath)) { dotenv.config({ path: envPath }); break; }
-  cwd = path.dirname(cwd);
+// Render injects env vars directly — no .env file needed
+dotenv.config();
 }
 
 // ============================================
