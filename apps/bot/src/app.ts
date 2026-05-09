@@ -3,9 +3,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createServer } from 'http';
 
-// ============================================
-// AI Client
-// ============================================
 class AIClient {
   private gemini: GoogleGenerativeAI;
   private groq: Groq;
@@ -49,8 +46,9 @@ class VoiceTranscriber {
 
 class BotService {
   private bot: Telegraf;
-  constructor(private ai: AIClient, private transcriber: VoiceTranscriber | null) {
+  constructor(private ai: AIClient, private transcriber: VoiceTranscriber | null, private webhookUrl: string) {
     this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
+
     this.bot.command('start', async (ctx) => { await ctx.reply('Welcome to <b>Getedil</b>! 🚀\n\n/help', { parse_mode: 'HTML' }); });
     this.bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress', { parse_mode: 'HTML' }); });
     this.bot.command('courses', async (ctx) => { await ctx.reply('📚 <b>AI Engineering 101</b>\n👉 /learn ai-engineering-101\n\n<b>Bot Development</b>\n👉 /learn bot-development', { parse_mode: 'HTML' }); });
@@ -84,22 +82,34 @@ class BotService {
     });
     this.bot.catch(async (err) => { console.error(err); });
   }
-  async start(): Promise<void> { console.log('🤖 Starting...'); await this.bot.launch(); console.log('✅ Running'); }
+  async start(): Promise<void> {
+    console.log('🤖 Starting webhook mode...');
+    await this.bot.launch({
+      webhook: { domain: new URL(this.webhookUrl).hostname, port: 3000 },
+    });
+    console.log('✅ Webhook set at:', this.webhookUrl);
+  }
   async stop(): Promise<void> { await this.bot.stop(); }
 }
 
 async function main() {
   console.log('\nGETEDIL-OS-BOT\n');
+
+  const port = parseInt(process.env.PORT || '3000');
+  const renderUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
+
   createServer((req, res) => {
     if (req.url === '/health') { res.writeHead(200).end('OK'); return; }
     res.writeHead(200).end('GETEDIL-OS-BOT');
-  }).listen(3000, () => console.log('🏥 Health :3000'));
+  }).listen(port, () => console.log('🏥 Health :' + port));
+
   const ai = new AIClient();
   const transcriber = process.env.GEMINI_API_KEY ? new VoiceTranscriber() : null;
-  const bot = new BotService(ai, transcriber);
+  const bot = new BotService(ai, transcriber, renderUrl);
   await bot.start();
+
   process.on('SIGINT', async () => { await bot.stop(); process.exit(0); });
   process.on('SIGTERM', async () => { await bot.stop(); process.exit(0); });
-  console.log('✅ Running');
+  console.log('✅ Running on ' + renderUrl);
 }
 main().catch(e => { console.error('❌', e); process.exit(1); });
