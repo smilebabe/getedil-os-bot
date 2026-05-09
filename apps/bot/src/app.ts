@@ -3,7 +3,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
-import * as cheerio from 'cheerio';
 const WebSocket = require('ws');
 // Voice transcriber (uses gemini from line 77)
 let transcriber: VoiceTranscriber | null = null;
@@ -104,32 +103,57 @@ bot.command('courses', async (ctx) => {
   await ctx.reply('📚 <b>Courses</b>\n\n<b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro\n\nStart with /learn ai intro', { parse_mode: 'HTML' });
 });
 
-bot.command('learn', async (ctx) => {
-  const args = ctx.message.text.split(' ').slice(1);
-  const uid = ctx.from?.id;
-  if (!args.length) { await ctx.reply('Usage: /learn <course> <module>\n\nExample: /learn ai intro\nTry /courses'); return; }
-
-  const courseId = args[0]!;
-  const modId = args[1];
-  const course = COURSES[courseId];
-  if (!course) { await ctx.reply('Course not found. Try /courses'); return; }
-
-  // Show course overview
-  if (!modId) {
-    const done = uid ? await getDone(uid, courseId) : [];
-    const list = course.mods.map((m, i) => `${i + 1}. ${m}${done.includes(m) ? ' ✅' : ''}\n   /learn ${courseId} ${m}`).join('\n\n');
-    await ctx.reply(`📚 <b>${course.title}</b>\n\n${list}`, { parse_mode: 'HTML' });
-    return;
+bot.command('jobs', async (ctx) => {
+  await ctx.reply('💼 Fetching Ethiopian tech jobs...');
+  
+  const jobs: string[] = [];
+  
+  // Try Ethiojobs
+  try {
+    const res = await fetch('https://www.ethiojobs.net/jobs/', {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const html = await res.text();
+    // Simple regex extraction of job titles
+    const titleRegex = /<h2[^>]*class="[^"]*job-title[^"]*"[^>]*>(.*?)<\/h2>/gi;
+    let match;
+    while ((match = titleRegex.exec(html)) !== null && jobs.length < 4) {
+      const title = match[1]!.replace(/<[^>]*>/g, '').trim();
+      if (title) jobs.push(`<b>${title}</b>\n🏢 Ethiojobs\n📍 Ethiopia\n🔗 https://www.ethiojobs.net`);
+    }
+  } catch (e: any) { console.log('Ethiojobs:', e.message); }
+  
+  // Try Dereja  
+  if (jobs.length < 4) {
+    try {
+      const res = await fetch('https://dereja.com/jobs', {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      const html = await res.text();
+      const titleRegex = /<h3[^>]*>(.*?)<\/h3>/gi;
+      let match;
+      while ((match = titleRegex.exec(html)) !== null && jobs.length < 8) {
+        const title = match[1]!.replace(/<[^>]*>/g, '').trim();
+        if (title && title.length > 5) jobs.push(`<b>${title}</b>\n🏢 Dereja\n📍 Ethiopia\n🔗 https://dereja.com`);
+      }
+    } catch (e: any) { console.log('Dereja:', e.message); }
   }
-
-  // Show lesson
-  const key = `${courseId}/${modId}`;
-  const lesson = LESSONS[key] || '📖 Module coming soon!';
-  await ctx.reply(lesson, { parse_mode: 'HTML' });
-
-  // Mark done
-  if (uid) await markDone(uid, courseId, modId);
-});
+  
+  // Fallback
+  if (jobs.length === 0) {
+    const fallbacks = [
+      '<b>AI/ML Engineer</b>\n🏢 Ethiopian AI Institute\n📍 Addis Ababa',
+      '<b>Full Stack Developer</b>\n🏢 Safaricom Ethiopia\n📍 Addis Ababa',
+      '<b>Python Developer</b>\n🏢 Multiple Companies\n📍 Remote / Addis Ababa',
+      '<b>Data Scientist</b>\n🏢 Commercial Bank of Ethiopia\n📍 Addis Ababa',
+      '<b>Freelance AI Trainer</b>\n🏢 Upwork / Fiverr\n📍 Remote',
+      '<b>Cloud Engineer</b>\n🏢 Raxio Data Centre\n📍 Addis Ababa',
+    ];
+    jobs.push(...fallbacks);
+  }
+  
+  await ctx.reply('💼 <b>Ethiopian Tech Jobs</b>\n\n' + jobs.join('\n\n'), { parse_mode: 'HTML' });
+});});
 
 bot.command('jobs', async (ctx) => {
   await ctx.reply('💼 Searching latest Ethiopian tech jobs...');

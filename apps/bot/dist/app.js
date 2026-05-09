@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -41,7 +8,6 @@ const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
-const cheerio = __importStar(require("cheerio"));
 const WebSocket = require('ws');
 // Voice transcriber (uses gemini from line 77)
 let transcriber = null;
@@ -179,35 +145,61 @@ bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /pr
 bot.command('courses', async (ctx) => {
     await ctx.reply('📚 <b>Courses</b>\n\n<b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro\n\nStart with /learn ai intro', { parse_mode: 'HTML' });
 });
-bot.command('learn', async (ctx) => {
-    const args = ctx.message.text.split(' ').slice(1);
-    const uid = ctx.from?.id;
-    if (!args.length) {
-        await ctx.reply('Usage: /learn <course> <module>\n\nExample: /learn ai intro\nTry /courses');
-        return;
+bot.command('jobs', async (ctx) => {
+    await ctx.reply('💼 Fetching Ethiopian tech jobs...');
+    const jobs = [];
+    // Try Ethiojobs
+    try {
+        const res = await fetch('https://www.ethiojobs.net/jobs/', {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        const html = await res.text();
+        // Simple regex extraction of job titles
+        const titleRegex = /<h2[^>]*class="[^"]*job-title[^"]*"[^>]*>(.*?)<\/h2>/gi;
+        let match;
+        while ((match = titleRegex.exec(html)) !== null && jobs.length < 4) {
+            const title = match[1].replace(/<[^>]*>/g, '').trim();
+            if (title)
+                jobs.push(`<b>${title}</b>\n🏢 Ethiojobs\n📍 Ethiopia\n🔗 https://www.ethiojobs.net`);
+        }
     }
-    const courseId = args[0];
-    const modId = args[1];
-    const course = COURSES[courseId];
-    if (!course) {
-        await ctx.reply('Course not found. Try /courses');
-        return;
+    catch (e) {
+        console.log('Ethiojobs:', e.message);
     }
-    // Show course overview
-    if (!modId) {
-        const done = uid ? await getDone(uid, courseId) : [];
-        const list = course.mods.map((m, i) => `${i + 1}. ${m}${done.includes(m) ? ' ✅' : ''}\n   /learn ${courseId} ${m}`).join('\n\n');
-        await ctx.reply(`📚 <b>${course.title}</b>\n\n${list}`, { parse_mode: 'HTML' });
-        return;
+    // Try Dereja  
+    if (jobs.length < 4) {
+        try {
+            const res = await fetch('https://dereja.com/jobs', {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            const html = await res.text();
+            const titleRegex = /<h3[^>]*>(.*?)<\/h3>/gi;
+            let match;
+            while ((match = titleRegex.exec(html)) !== null && jobs.length < 8) {
+                const title = match[1].replace(/<[^>]*>/g, '').trim();
+                if (title && title.length > 5)
+                    jobs.push(`<b>${title}</b>\n🏢 Dereja\n📍 Ethiopia\n🔗 https://dereja.com`);
+            }
+        }
+        catch (e) {
+            console.log('Dereja:', e.message);
+        }
     }
-    // Show lesson
-    const key = `${courseId}/${modId}`;
-    const lesson = LESSONS[key] || '📖 Module coming soon!';
-    await ctx.reply(lesson, { parse_mode: 'HTML' });
-    // Mark done
-    if (uid)
-        await markDone(uid, courseId, modId);
+    // Fallback
+    if (jobs.length === 0) {
+        const fallbacks = [
+            '<b>AI/ML Engineer</b>\n🏢 Ethiopian AI Institute\n📍 Addis Ababa',
+            '<b>Full Stack Developer</b>\n🏢 Safaricom Ethiopia\n📍 Addis Ababa',
+            '<b>Python Developer</b>\n🏢 Multiple Companies\n📍 Remote / Addis Ababa',
+            '<b>Data Scientist</b>\n🏢 Commercial Bank of Ethiopia\n📍 Addis Ababa',
+            '<b>Freelance AI Trainer</b>\n🏢 Upwork / Fiverr\n📍 Remote',
+            '<b>Cloud Engineer</b>\n🏢 Raxio Data Centre\n📍 Addis Ababa',
+        ];
+        jobs.push(...fallbacks);
+    }
+    await ctx.reply('💼 <b>Ethiopian Tech Jobs</b>\n\n' + jobs.join('\n\n'), { parse_mode: 'HTML' });
 });
+;
 bot.command('jobs', async (ctx) => {
     await ctx.reply('💼 Searching latest Ethiopian tech jobs...');
     const jobs = [];
