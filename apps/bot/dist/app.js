@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -8,6 +41,7 @@ const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
+const cheerio = __importStar(require("cheerio"));
 const WebSocket = require('ws');
 // Voice transcriber (uses gemini from line 77)
 let transcriber = null;
@@ -175,39 +209,76 @@ bot.command('learn', async (ctx) => {
         await markDone(uid, courseId, modId);
 });
 bot.command('jobs', async (ctx) => {
-    await ctx.reply('💼 Fetching latest Ethiopian tech jobs...');
+    await ctx.reply('💼 Searching latest Ethiopian tech jobs...');
     const jobs = [];
-    // Try scraping Ethiojobs
+    // Scrape Ethiojobs
     try {
-        const res = await fetch('https://www.ethiojobs.net/api/jobs?limit=5', {
-            headers: { 'User-Agent': 'GetedilBot/1.0' }
+        const res = await fetch('https://www.ethiojobs.net/jobs/', {
+            headers: { 'User-Agent': 'GetedilBot/1.0 (Telegram Education Bot)' },
+            signal: AbortSignal.timeout(8000),
         });
         if (res.ok) {
-            const data = await res.json();
-            for (const j of (data.data || data || []).slice(0, 5)) {
-                jobs.push(`<b>${j.title || j.job_title || 'Position'}</b>\n🏢 ${j.company || j.employer || 'Company'}\n📍 ${j.location || 'Ethiopia'}\n🔗 ${j.url || j.apply_url || 'https://www.ethiojobs.net'}`);
-            }
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            $('.job-listing, .job-item, article, .listing-card').each((_i, el) => {
+                if (_i >= 5)
+                    return false;
+                const title = $(el).find('.job-title, h2, h3, .title').first().text().trim();
+                const company = $(el).find('.company-name, .employer, .company').first().text().trim();
+                const location = $(el).find('.location, .region').first().text().trim() || 'Ethiopia';
+                const link = $(el).find('a').first().attr('href') || '';
+                if (title && title.length > 3) {
+                    jobs.push({
+                        title,
+                        company: company || 'Ethiojobs',
+                        location,
+                        url: link.startsWith('http') ? link : 'https://www.ethiojobs.net' + link,
+                    });
+                }
+            });
         }
     }
-    catch { /* ignore */ }
-    // Try scraping Dereja
-    try {
-        const res = await fetch('https://dereja.com/api/v1/jobs?limit=5', {
-            headers: { 'User-Agent': 'GetedilBot/1.0' }
-        });
-        if (res.ok) {
-            const data = await res.json();
-            for (const j of (data.data || data || []).slice(0, 5)) {
-                jobs.push(`<b>${j.title || j.position || 'Position'}</b>\n🏢 ${j.company || j.organization || 'Company'}\n📍 ${j.location || 'Ethiopia'}\n🔗 ${j.url || 'https://dereja.com'}`);
+    catch (e) {
+        console.log('Ethiojobs scrape:', e.message);
+    }
+    // Scrape Dereja
+    if (jobs.length < 5) {
+        try {
+            const res = await fetch('https://dereja.com/jobs', {
+                headers: { 'User-Agent': 'GetedilBot/1.0 (Telegram Education Bot)' },
+                signal: AbortSignal.timeout(8000),
+            });
+            if (res.ok) {
+                const html = await res.text();
+                const $ = cheerio.load(html);
+                $('.job-card, .listing-item, .vacancy, .job-listing').each((_i, el) => {
+                    if (jobs.length >= 8)
+                        return false;
+                    const title = $(el).find('.title, h3, h4, .job-title').first().text().trim();
+                    const company = $(el).find('.company, .organization, .employer').first().text().trim();
+                    const location = $(el).find('.location, .region').first().text().trim() || 'Ethiopia';
+                    const link = $(el).find('a').first().attr('href') || '';
+                    if (title && title.length > 3) {
+                        jobs.push({
+                            title,
+                            company: company || 'Dereja',
+                            location,
+                            url: link.startsWith('http') ? link : 'https://dereja.com' + link,
+                        });
+                    }
+                });
             }
         }
+        catch (e) {
+            console.log('Dereja scrape:', e.message);
+        }
     }
-    catch { /* ignore */ }
-    // Fallback curated jobs if scraping fails
+    // Fallback curated jobs if scraping returned nothing
     if (jobs.length === 0) {
-        jobs.push('<b>AI/ML Engineer</b>\n🏢 Ethiopian AI Institute\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net', '<b>Full Stack Developer</b>\n🏢 Safaricom Ethiopia\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net', '<b>Python Developer</b>\n🏢 Multiple Companies\n📍 Remote / Addis Ababa\n🔗 https://dereja.com', '<b>Data Scientist</b>\n🏢 Commercial Bank of Ethiopia\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net', '<b>Freelance AI Trainer</b>\n🏢 Upwork / Fiverr\n📍 Remote\n🔗 https://www.upwork.com');
+        jobs.push({ title: 'AI/ML Engineer', company: 'Ethiopian AI Institute', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' }, { title: 'Full Stack Developer', company: 'Safaricom Ethiopia', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' }, { title: 'Python Developer', company: 'Multiple Companies', location: 'Remote / Addis Ababa', url: 'https://dereja.com' }, { title: 'Data Scientist', company: 'Commercial Bank of Ethiopia', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' }, { title: 'Freelance AI Trainer', company: 'Upwork / Fiverr', location: 'Remote', url: 'https://www.upwork.com' }, { title: 'React Native Developer', company: 'Gebeya Inc.', location: 'Addis Ababa', url: 'https://dereja.com' }, { title: 'Cloud Engineer', company: 'Raxio Data Centre', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' });
     }
-    const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' + jobs.join('\n\n');
+    const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' +
+        jobs.slice(0, 8).map(j => `<b>${j.title}</b>\n🏢 ${j.company}\n📍 ${j.location}\n🔗 ${j.url}`).join('\n\n');
     await ctx.reply(msg, { parse_mode: 'HTML' });
 });
 bot.command('memory', async (ctx) => {

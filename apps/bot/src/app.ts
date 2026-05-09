@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
+import * as cheerio from 'cheerio';
 const WebSocket = require('ws');
 // Voice transcriber (uses gemini from line 77)
 let transcriber: VoiceTranscriber | null = null;
@@ -131,51 +132,92 @@ bot.command('learn', async (ctx) => {
 });
 
 bot.command('jobs', async (ctx) => {
-  await ctx.reply('💼 Fetching latest Ethiopian tech jobs...');
+  await ctx.reply('💼 Searching latest Ethiopian tech jobs...');
   
-  const jobs: string[] = [];
+  const jobs: Array<{title: string; company: string; location: string; url: string}> = [];
   
-  // Try scraping Ethiojobs
+  // Scrape Ethiojobs
   try {
-    const res = await fetch('https://www.ethiojobs.net/api/jobs?limit=5', {
-      headers: { 'User-Agent': 'GetedilBot/1.0' }
+    const res = await fetch('https://www.ethiojobs.net/jobs/', {
+      headers: { 'User-Agent': 'GetedilBot/1.0 (Telegram Education Bot)' },
+      signal: AbortSignal.timeout(8000),
     });
     if (res.ok) {
-      const data: any = await res.json();
-      for (const j of (data.data || data || []).slice(0, 5)) {
-        jobs.push(`<b>${j.title || j.job_title || 'Position'}</b>\n🏢 ${j.company || j.employer || 'Company'}\n📍 ${j.location || 'Ethiopia'}\n🔗 ${j.url || j.apply_url || 'https://www.ethiojobs.net'}`);
-      }
+      const html = await res.text();
+      const $ = cheerio.load(html);
+      
+            $('.job-listing, .job-item, article, .listing-card').each((_i: number, el: any) => {
+        if (_i >= 5) return false;
+        const title = $(el).find('.job-title, h2, h3, .title').first().text().trim();
+        const company = $(el).find('.company-name, .employer, .company').first().text().trim();
+        const location = $(el).find('.location, .region').first().text().trim() || 'Ethiopia';
+        const link = $(el).find('a').first().attr('href') || '';
+        if (title && title.length > 3) {
+          jobs.push({
+            title,
+            company: company || 'Ethiojobs',
+            location,
+            url: link.startsWith('http') ? link : 'https://www.ethiojobs.net' + link,
+          });
+        }
+      });
     }
-  } catch { /* ignore */ }
-
-  // Try scraping Dereja
-  try {
-    const res = await fetch('https://dereja.com/api/v1/jobs?limit=5', {
-      headers: { 'User-Agent': 'GetedilBot/1.0' }
-    });
-    if (res.ok) {
-      const data: any = await res.json();
-      for (const j of (data.data || data || []).slice(0, 5)) {
-        jobs.push(`<b>${j.title || j.position || 'Position'}</b>\n🏢 ${j.company || j.organization || 'Company'}\n📍 ${j.location || 'Ethiopia'}\n🔗 ${j.url || 'https://dereja.com'}`);
+  } catch (e: any) {
+    console.log('Ethiojobs scrape:', e.message);
+  }
+  
+  // Scrape Dereja
+  if (jobs.length < 5) {
+    try {
+      const res = await fetch('https://dereja.com/jobs', {
+        headers: { 'User-Agent': 'GetedilBot/1.0 (Telegram Education Bot)' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        
+                $('.job-card, .listing-item, .vacancy, .job-listing').each((_i: number, el: any) => {
+          if (jobs.length >= 8) return false;
+          const title = $(el).find('.title, h3, h4, .job-title').first().text().trim();
+          const company = $(el).find('.company, .organization, .employer').first().text().trim();
+          const location = $(el).find('.location, .region').first().text().trim() || 'Ethiopia';
+          const link = $(el).find('a').first().attr('href') || '';
+          if (title && title.length > 3) {
+            jobs.push({
+              title,
+              company: company || 'Dereja',
+              location,
+              url: link.startsWith('http') ? link : 'https://dereja.com' + link,
+            });
+          }
+        });
       }
+    } catch (e: any) {
+      console.log('Dereja scrape:', e.message);
     }
-  } catch { /* ignore */ }
-
-  // Fallback curated jobs if scraping fails
+  }
+  
+  // Fallback curated jobs if scraping returned nothing
   if (jobs.length === 0) {
     jobs.push(
-      '<b>AI/ML Engineer</b>\n🏢 Ethiopian AI Institute\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net',
-      '<b>Full Stack Developer</b>\n🏢 Safaricom Ethiopia\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net',
-      '<b>Python Developer</b>\n🏢 Multiple Companies\n📍 Remote / Addis Ababa\n🔗 https://dereja.com',
-      '<b>Data Scientist</b>\n🏢 Commercial Bank of Ethiopia\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net',
-      '<b>Freelance AI Trainer</b>\n🏢 Upwork / Fiverr\n📍 Remote\n🔗 https://www.upwork.com'
+      { title: 'AI/ML Engineer', company: 'Ethiopian AI Institute', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' },
+      { title: 'Full Stack Developer', company: 'Safaricom Ethiopia', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' },
+      { title: 'Python Developer', company: 'Multiple Companies', location: 'Remote / Addis Ababa', url: 'https://dereja.com' },
+      { title: 'Data Scientist', company: 'Commercial Bank of Ethiopia', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' },
+      { title: 'Freelance AI Trainer', company: 'Upwork / Fiverr', location: 'Remote', url: 'https://www.upwork.com' },
+      { title: 'React Native Developer', company: 'Gebeya Inc.', location: 'Addis Ababa', url: 'https://dereja.com' },
+      { title: 'Cloud Engineer', company: 'Raxio Data Centre', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' },
     );
   }
-
-  const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' + jobs.join('\n\n');
-  await ctx.reply(msg, { parse_mode: 'HTML' });
+  
+  const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' + 
+    jobs.slice(0, 8).map(j => 
+      `<b>${j.title}</b>\n🏢 ${j.company}\n📍 ${j.location}\n🔗 ${j.url}`
+    ).join('\n\n');
+  
+    await ctx.reply(msg, { parse_mode: 'HTML' });
 });
-
 bot.command('memory', async (ctx) => {
   const uid = ctx.from?.id;
   if (!uid) { await ctx.reply('Cannot identify user.'); return; }
