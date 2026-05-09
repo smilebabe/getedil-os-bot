@@ -175,7 +175,40 @@ bot.command('learn', async (ctx) => {
         await markDone(uid, courseId, modId);
 });
 bot.command('jobs', async (ctx) => {
-    await ctx.reply('💼 <b>Ethiopian Tech Jobs</b>\n\nAI/ML Engineer — Ethiopian AI Institute\nFull Stack Dev — Safaricom\nPython Developer — Remote\nData Scientist — CBE\nAI Trainer — Upwork/Fiverr');
+    await ctx.reply('💼 Fetching latest Ethiopian tech jobs...');
+    const jobs = [];
+    // Try scraping Ethiojobs
+    try {
+        const res = await fetch('https://www.ethiojobs.net/api/jobs?limit=5', {
+            headers: { 'User-Agent': 'GetedilBot/1.0' }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            for (const j of (data.data || data || []).slice(0, 5)) {
+                jobs.push(`<b>${j.title || j.job_title || 'Position'}</b>\n🏢 ${j.company || j.employer || 'Company'}\n📍 ${j.location || 'Ethiopia'}\n🔗 ${j.url || j.apply_url || 'https://www.ethiojobs.net'}`);
+            }
+        }
+    }
+    catch { /* ignore */ }
+    // Try scraping Dereja
+    try {
+        const res = await fetch('https://dereja.com/api/v1/jobs?limit=5', {
+            headers: { 'User-Agent': 'GetedilBot/1.0' }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            for (const j of (data.data || data || []).slice(0, 5)) {
+                jobs.push(`<b>${j.title || j.position || 'Position'}</b>\n🏢 ${j.company || j.organization || 'Company'}\n📍 ${j.location || 'Ethiopia'}\n🔗 ${j.url || 'https://dereja.com'}`);
+            }
+        }
+    }
+    catch { /* ignore */ }
+    // Fallback curated jobs if scraping fails
+    if (jobs.length === 0) {
+        jobs.push('<b>AI/ML Engineer</b>\n🏢 Ethiopian AI Institute\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net', '<b>Full Stack Developer</b>\n🏢 Safaricom Ethiopia\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net', '<b>Python Developer</b>\n🏢 Multiple Companies\n📍 Remote / Addis Ababa\n🔗 https://dereja.com', '<b>Data Scientist</b>\n🏢 Commercial Bank of Ethiopia\n📍 Addis Ababa\n🔗 https://www.ethiojobs.net', '<b>Freelance AI Trainer</b>\n🏢 Upwork / Fiverr\n📍 Remote\n🔗 https://www.upwork.com');
+    }
+    const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' + jobs.join('\n\n');
+    await ctx.reply(msg, { parse_mode: 'HTML' });
 });
 bot.command('memory', async (ctx) => {
     const uid = ctx.from?.id;
