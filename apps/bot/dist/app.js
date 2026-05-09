@@ -103,7 +103,7 @@ function loadModuleContent(courseId, moduleId) {
     catch { }
     return null;
 }
-function getModuleTitle(courseId, moduleId) {
+function getModuleTitle(_courseId, moduleId) {
     const titles = {
         'intro': 'Introduction to AI',
         'prompt-engineering': 'Prompt Engineering',

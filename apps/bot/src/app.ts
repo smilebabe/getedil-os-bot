@@ -106,7 +106,7 @@ function loadModuleContent(courseId: string, moduleId: string): string | null {
   return null;
 }
 
-function getModuleTitle(courseId: string, moduleId: string): string {
+function getModuleTitle(_courseId: string, moduleId: string): string {
   const titles: Record<string, string> = {
     'intro': 'Introduction to AI',
     'prompt-engineering': 'Prompt Engineering',
