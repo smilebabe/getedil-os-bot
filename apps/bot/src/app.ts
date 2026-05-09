@@ -181,7 +181,7 @@ bot.launch({
   allowedUpdates: ['message', 'callback_query']
 }).then(() => {
   console.log('✅ Polling connected');
-}).catch((err: any) => {
+}).catch(() => {
   console.log('⚠️ Polling error, retrying in 5s...');
   setTimeout(() => bot.launch({ dropPendingUpdates: true }), 5000);
 });
