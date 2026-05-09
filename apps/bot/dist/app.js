@@ -7,23 +7,6 @@ const telegraf_1 = require("telegraf");
 const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
-supabase - js;
-';/a;
-let supabase = null;
-try {
-    const url = process.env.SUPABASE_URL || '';
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-    if (url && key) {
-        supabase = (0, supabase_js_1.createClient)(url, key);
-        console.log('📦 Supabase connected');
-    }
-    else {
-        console.log('⚠️ Supabase not configured');
-    }
-}
-catch (e) {
-    console.log('⚠️ Supabase init failed:', e.message);
-}
 const http_1 = require("http");
 console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
@@ -31,16 +14,13 @@ console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
 let supabase = null;
 try {
-    supabase = (0, supabase_js_1.createClient)();
+    supabase = (0, supabase_js_1.createClient)(process.env.SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+    console.log('📦 Supabase connected');
 }
 catch (e) {
     supabase = null;
-    console.log('⚠️ Supabase init failed');
+    console.log('⚠️ Supabase not configured — memory disabled');
 }
-process.env.SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-;
-console.log('📦 Supabase ready');
 // Safe DB helpers - never crash on error
 async function saveMsg(uid, role, text) {
     try {
