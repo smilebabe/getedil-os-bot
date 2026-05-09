@@ -99,6 +99,7 @@ class AIClient {
 // ============================================
 const ai = new AIClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
+bot.use(async (ctx: any, next: any) => { console.log('📨 Received:', ctx.updateType); return next(); });
 
 bot.command('start', async (ctx) => {
   const id = ctx.from?.id;
