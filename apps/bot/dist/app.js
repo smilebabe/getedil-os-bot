@@ -381,4 +381,5 @@ async function main() {
     console.log('✅ Running');
 }
 main().catch(e => { console.error('❌', e); process.exit(1); });
+// Force rebuild Sat May  9 03:44:31 PDT 2026
 //# sourceMappingURL=app.js.map
