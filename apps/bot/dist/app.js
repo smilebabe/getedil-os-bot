@@ -345,7 +345,8 @@ class BotService {
                     await saveMessage(id, 'assistant', reply);
                 await ctx.reply(reply);
             }
-            catch {
+            catch (e) {
+                console.error('❌ Text error:', e.message);
                 await ctx.reply('Error.');
             }
         });

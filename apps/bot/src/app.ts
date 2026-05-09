@@ -336,7 +336,7 @@ class BotService {
         const reply = await this.ai.generateResponse(msg);
         if (id) await saveMessage(id, 'assistant', reply);
         await ctx.reply(reply);
-      } catch { await ctx.reply('Error.'); }
+      } catch(e: any) { console.error('❌ Text error:', e.message); await ctx.reply('Error.'); }
     });
 
     this.bot.catch(async (err) => { console.error(err); });
