@@ -19,7 +19,7 @@ try {
 }
 catch (e) {
     supabase = null;
-    console.log('⚠️ Supabase not configured — memory disabled');
+    console.log('⚠️ Supabase init failed:', e.message);
 }
 // Safe DB helpers - never crash on error
 async function saveMsg(uid, role, text) {
