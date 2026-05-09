@@ -8,7 +8,7 @@ const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
-const ws_1 = __importDefault(require("ws"));
+const WebSocket = require('ws');
 console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
 // Supabase (safe init)
@@ -18,7 +18,7 @@ try {
     const url = process.env.SUPABASE_URL || '';
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     if (url && key) {
-        supabase = (0, supabase_js_1.createClient)(url, key, { realtime: { transport: ws_1.default },
+        supabase = (0, supabase_js_1.createClient)(url, key, { realtime: { transport: WebSocket },
             auth: { persistSession: false },
         });
         console.log('📦 Supabase connected');

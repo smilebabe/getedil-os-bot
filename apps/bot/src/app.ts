@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
-import WebSocket from 'ws';
+const WebSocket = require('ws');
 
 console.log('\nGETEDIL-OS-BOT\n');
 
