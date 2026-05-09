@@ -2,6 +2,15 @@ import { Telegraf } from 'telegraf';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
+supabase-js';/a
+
+let supabase: any = null;
+try {
+  const url = process.env.SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (url && key) { supabase = createClient(url, key); console.log('📦 Supabase connected'); }
+  else { console.log('⚠️ Supabase not configured'); }
+} catch(e: any) { console.log('⚠️ Supabase init failed:', e.message); }
 import { createServer } from 'http';
 
 console.log('\nGETEDIL-OS-BOT\n');
@@ -9,7 +18,8 @@ console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
 // Supabase (safe init)
 // ============================================
-const supabase = createClient(
+let supabase: any = null; try { supabase = createClient(
+} catch(e: any) { supabase = null; console.log('⚠️ Supabase init failed'); }
   process.env.SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
