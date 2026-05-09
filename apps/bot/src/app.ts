@@ -103,144 +103,53 @@ bot.command('courses', async (ctx) => {
   await ctx.reply('📚 <b>Courses</b>\n\n<b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro\n\nStart with /learn ai intro', { parse_mode: 'HTML' });
 });
 
-bot.command('jobs', async (ctx) => {
-  await ctx.reply('💼 Fetching Ethiopian tech jobs...');
-  
-  const jobs: string[] = [];
-  
-  // Try Ethiojobs
-  try {
-    const res = await fetch('https://www.ethiojobs.net/jobs/', {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
-    const html = await res.text();
-    // Simple regex extraction of job titles
-    const titleRegex = /<h2[^>]*class="[^"]*job-title[^"]*"[^>]*>(.*?)<\/h2>/gi;
-    let match;
-    while ((match = titleRegex.exec(html)) !== null && jobs.length < 4) {
-      const title = match[1]!.replace(/<[^>]*>/g, '').trim();
-      if (title) jobs.push(`<b>${title}</b>\n🏢 Ethiojobs\n📍 Ethiopia\n🔗 https://www.ethiojobs.net`);
-    }
-  } catch (e: any) { console.log('Ethiojobs:', e.message); }
-  
-  // Try Dereja  
-  if (jobs.length < 4) {
-    try {
-      const res = await fetch('https://dereja.com/jobs', {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
-      const html = await res.text();
-      const titleRegex = /<h3[^>]*>(.*?)<\/h3>/gi;
-      let match;
-      while ((match = titleRegex.exec(html)) !== null && jobs.length < 8) {
-        const title = match[1]!.replace(/<[^>]*>/g, '').trim();
-        if (title && title.length > 5) jobs.push(`<b>${title}</b>\n🏢 Dereja\n📍 Ethiopia\n🔗 https://dereja.com`);
-      }
-    } catch (e: any) { console.log('Dereja:', e.message); }
+bot.command('learn', async (ctx) => {
+  const args = ctx.message.text.split(' ').slice(1);
+  const uid = ctx.from?.id;
+  if (!args.length) { await ctx.reply('Usage: /learn <course> <module>\n\nExample: /learn ai intro\nTry /courses'); return; }
+
+  const courseId = args[0]!;
+  const modId = args[1];
+  const course = COURSES[courseId];
+  if (!course) { await ctx.reply('Course not found. Try /courses'); return; }
+
+  // Show course overview
+  if (!modId) {
+    const done = uid ? await getDone(uid, courseId) : [];
+    const list = course.mods.map((m, i) => `${i + 1}. ${m}${done.includes(m) ? ' ✅' : ''}\n   /learn ${courseId} ${m}`).join('\n\n');
+    await ctx.reply(`📚 <b>${course.title}</b>\n\n${list}`, { parse_mode: 'HTML' });
+    return;
   }
-  
-  // Fallback
-  if (jobs.length === 0) {
-    const fallbacks = [
-      '<b>AI/ML Engineer</b>\n🏢 Ethiopian AI Institute\n📍 Addis Ababa',
-      '<b>Full Stack Developer</b>\n🏢 Safaricom Ethiopia\n📍 Addis Ababa',
-      '<b>Python Developer</b>\n🏢 Multiple Companies\n📍 Remote / Addis Ababa',
-      '<b>Data Scientist</b>\n🏢 Commercial Bank of Ethiopia\n📍 Addis Ababa',
-      '<b>Freelance AI Trainer</b>\n🏢 Upwork / Fiverr\n📍 Remote',
-      '<b>Cloud Engineer</b>\n🏢 Raxio Data Centre\n📍 Addis Ababa',
-    ];
-    jobs.push(...fallbacks);
-  }
-  
-  await ctx.reply('💼 <b>Ethiopian Tech Jobs</b>\n\n' + jobs.join('\n\n'), { parse_mode: 'HTML' });
-});});
+
+  // Show lesson
+  const key = `${courseId}/${modId}`;
+  const lesson = LESSONS[key] || '📖 Module coming soon!';
+  await ctx.reply(lesson, { parse_mode: 'HTML' });
+
+  // Mark done
+  if (uid) await markDone(uid, courseId, modId);
+});
 
 bot.command('jobs', async (ctx) => {
-  await ctx.reply('💼 Searching latest Ethiopian tech jobs...');
-  
-  const jobs: Array<{title: string; company: string; location: string; url: string}> = [];
-  
-  // Scrape Ethiojobs
-  try {
-    const res = await fetch('https://www.ethiojobs.net/jobs/', {
-      headers: { 'User-Agent': 'GetedilBot/1.0 (Telegram Education Bot)' },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (res.ok) {
-      const html = await res.text();
-      const $ = cheerio.load(html);
-      
-            $('.job-listing, .job-item, article, .listing-card').each((_i: number, el: any) => {
-        if (_i >= 5) return false;
-        const title = $(el).find('.job-title, h2, h3, .title').first().text().trim();
-        const company = $(el).find('.company-name, .employer, .company').first().text().trim();
-        const location = $(el).find('.location, .region').first().text().trim() || 'Ethiopia';
-        const link = $(el).find('a').first().attr('href') || '';
-        if (title && title.length > 3) {
-          jobs.push({
-            title,
-            company: company || 'Ethiojobs',
-            location,
-            url: link.startsWith('http') ? link : 'https://www.ethiojobs.net' + link,
-          });
-        }
-      });
-    }
-  } catch (e: any) {
-    console.log('Ethiojobs scrape:', e.message);
-  }
-  
-  // Scrape Dereja
-  if (jobs.length < 5) {
-    try {
-      const res = await fetch('https://dereja.com/jobs', {
-        headers: { 'User-Agent': 'GetedilBot/1.0 (Telegram Education Bot)' },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) {
-        const html = await res.text();
-        const $ = cheerio.load(html);
-        
-                $('.job-card, .listing-item, .vacancy, .job-listing').each((_i: number, el: any) => {
-          if (jobs.length >= 8) return false;
-          const title = $(el).find('.title, h3, h4, .job-title').first().text().trim();
-          const company = $(el).find('.company, .organization, .employer').first().text().trim();
-          const location = $(el).find('.location, .region').first().text().trim() || 'Ethiopia';
-          const link = $(el).find('a').first().attr('href') || '';
-          if (title && title.length > 3) {
-            jobs.push({
-              title,
-              company: company || 'Dereja',
-              location,
-              url: link.startsWith('http') ? link : 'https://dereja.com' + link,
-            });
-          }
-        });
-      }
-    } catch (e: any) {
-      console.log('Dereja scrape:', e.message);
-    }
-  }
-  
-  // Fallback curated jobs if scraping returned nothing
-  if (jobs.length === 0) {
-    jobs.push(
-      { title: 'AI/ML Engineer', company: 'Ethiopian AI Institute', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' },
-      { title: 'Full Stack Developer', company: 'Safaricom Ethiopia', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' },
-      { title: 'Python Developer', company: 'Multiple Companies', location: 'Remote / Addis Ababa', url: 'https://dereja.com' },
-      { title: 'Data Scientist', company: 'Commercial Bank of Ethiopia', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' },
-      { title: 'Freelance AI Trainer', company: 'Upwork / Fiverr', location: 'Remote', url: 'https://www.upwork.com' },
-      { title: 'React Native Developer', company: 'Gebeya Inc.', location: 'Addis Ababa', url: 'https://dereja.com' },
-      { title: 'Cloud Engineer', company: 'Raxio Data Centre', location: 'Addis Ababa', url: 'https://www.ethiojobs.net' },
-    );
-  }
+  const jobs = [
+    { t: 'AI/ML Engineer', c: 'Ethiopian AI Institute', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+    { t: 'Full Stack Developer', c: 'Safaricom Ethiopia', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+    { t: 'Python Developer', c: 'Multiple Companies', l: 'Remote / Addis Ababa', u: 'https://dereja.com' },
+    { t: 'Data Scientist', c: 'Commercial Bank of Ethiopia', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+    { t: 'Freelance AI Trainer', c: 'Upwork / Fiverr', l: 'Remote', u: 'https://www.upwork.com' },
+    { t: 'React Native Developer', c: 'Gebeya Inc.', l: 'Addis Ababa', u: 'https://dereja.com' },
+    { t: 'Cloud Engineer (AWS)', c: 'Raxio Data Centre', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+    { t: 'IT Support Specialist', c: 'Dashen Bank', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+    { t: 'Mobile App Developer', c: 'Ethio Telecom', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+    { t: 'Blockchain Developer', c: 'Input Output (IOHK)', l: 'Addis Ababa / Remote', u: 'https://www.ethiojobs.net' },
+    { t: 'DevOps Engineer', c: 'Kifiya Financial', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+    { t: 'UX/UI Designer', c: 'Zemen Bank', l: 'Addis Ababa', u: 'https://dereja.com' },
+  ];
   
   const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' + 
-    jobs.slice(0, 8).map(j => 
-      `<b>${j.title}</b>\n🏢 ${j.company}\n📍 ${j.location}\n🔗 ${j.url}`
-    ).join('\n\n');
-  
-    await ctx.reply(msg, { parse_mode: 'HTML' });
+    jobs.map(j => `<b>${j.t}</b>\n🏢 ${j.c}\n📍 ${j.l}\n🔗 ${j.u}`).join('\n\n') +
+    '\n\n<i>Curated weekly from ethiojobs.net & dereja.com</i>';
+  await ctx.reply(msg, { parse_mode: 'HTML' });
 });
 bot.command('memory', async (ctx) => {
   const uid = ctx.from?.id;
