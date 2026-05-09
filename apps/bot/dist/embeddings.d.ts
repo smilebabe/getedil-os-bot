@@ -1,7 +1,3 @@
-/**
- * Generate embeddings using Gemini's text-embedding-004 via REST API.
- * Returns 768-dimensional vector.
- */
 export declare function generateEmbedding(text: string): Promise<number[]>;
 export declare function seedContentEmbeddings(supabase: any): Promise<void>;
 export declare function indexUserMessage(supabase: any, telegramId: number, role: string, content: string, topic?: string): Promise<void>;

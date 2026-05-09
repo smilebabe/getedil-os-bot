@@ -1,41 +1,36 @@
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+import { pipeline } from '@xenova/transformers';
 
-/**
- * Generate embeddings using Gemini's text-embedding-004 via REST API.
- * Returns 768-dimensional vector.
- */
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_API_KEY}`;
-  
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'models/gemini-embedding-001',
-      content: { parts: [{ text }] }
-    })
-  });
+let embedder: any = null;
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Embedding API error: ${response.status} ${err.slice(0, 200)}`);
+async function getEmbedder() {
+  if (!embedder) {
+    console.log('📥 Loading embedding model (first time may download ~80MB)...');
+    embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    console.log('✅ Embedding model ready');
   }
+  return embedder;
+}
 
-  const data: any = await response.json();
-  return data.embedding?.values || [];
+export async function generateEmbedding(text: string): Promise<number[]> {
+  const model = await getEmbedder();
+  const result = await model(text, { pooling: 'mean', normalize: true });
+  return Array.from(result.data);
 }
 
 export async function seedContentEmbeddings(supabase: any) {
   const { data: existing } = await supabase.from('content_embeddings').select('id').limit(1);
-  if (existing && existing.length > 0) return;
+  if (existing && existing.length > 0) {
+    console.log('📚 Embeddings already seeded');
+    return;
+  }
 
   const content = [
-    { type: 'course', title: 'AI Engineering 101', content: '5-module course: AI intro, prompt engineering, vector databases, LLM integration, building AI apps. Beginner-friendly.', lang: 'en' },
+    { type: 'course', title: 'AI Engineering 101', content: '5-module course: AI intro, prompt engineering, vector databases, LLM integration, building AI apps. Beginner-friendly. Amharic and English.', lang: 'en' },
     { type: 'lesson', title: 'Introduction to AI', content: 'AI teaches computers to think. Machine learning, deep learning, NLP. AI in Ethiopia: agriculture, healthcare, finance.', lang: 'en' },
-    { type: 'lesson', title: 'Prompt Engineering', content: '4 elements: Role, Context, Task, Format. Chain-of-thought and few-shot prompting.', lang: 'en' },
+    { type: 'lesson', title: 'Prompt Engineering', content: '4 elements: Role, Context, Task, Format. Chain-of-thought and few-shot prompting techniques.', lang: 'en' },
     { type: 'lesson', title: 'Vector Databases', content: 'Search by meaning using embeddings. Semantic search, RAG. Tools: Pinecone, Weaviate, pgvector.', lang: 'en' },
     { type: 'lesson', title: 'LLM Integration', content: 'Connect AI to apps. Choose models, get API keys, send prompts, build features.', lang: 'en' },
-    { type: 'lesson', title: 'Building AI Apps', content: 'Final project module. Build real AI applications.', lang: 'en' },
+    { type: 'lesson', title: 'Building AI Apps', content: 'Final project module. Build real AI applications with everything learned.', lang: 'en' },
     { type: 'lesson', title: 'የAI መግቢያ', content: 'AI ምንድነው? ማሽን ለርኒንግ፣ ዲፕ ለርኒንግ እና NLP። AI በኢትዮጵያ።', lang: 'am' },
     { type: 'lesson', title: 'ፕሮምፕት ኢንጂነሪንግ', content: 'ጥሩ ፕሮምፕት አፃፃፍ። 4 አካላት፡ ሚና፣ አውድ፣ ተግባር፣ ቅርፀት።', lang: 'am' },
     { type: 'job', title: 'AI/ML Engineer', content: 'Ethiopian AI Institute. Addis Ababa. Full-time AI role.', lang: 'en' },
@@ -43,9 +38,9 @@ export async function seedContentEmbeddings(supabase: any) {
     { type: 'job', title: 'Python Developer', content: 'Multiple companies. Remote or Addis Ababa. Contract Python work.', lang: 'en' },
     { type: 'job', title: 'Data Scientist', content: 'Commercial Bank of Ethiopia. Addis Ababa. Data analytics and ML.', lang: 'en' },
     { type: 'job', title: 'Freelance AI Trainer', content: 'Upwork and Fiverr. Remote. Train AI models.', lang: 'en' },
-    { type: 'faq', title: 'What is Get\'Edil?', content: 'Get\'Edil (ጌት፟እድል) is a free AI learning platform for Ethiopian students with courses, voice transcription, and job listings.', lang: 'en' },
-    { type: 'faq', title: 'Is Get\'Edil free?', content: 'Yes, Get\'Edil is completely free. No payments, no subscriptions, no ads.', lang: 'en' },
-    { type: 'faq', title: 'What languages?', content: 'Get\'Edil speaks fluent Amharic and English. Voice notes work in both languages.', lang: 'en' },
+    { type: 'faq', title: "What is Get'Edil?", content: "Get'Edil (ጌት፟እድል) is a free AI learning platform for Ethiopian students with courses, voice transcription, and job listings.", lang: 'en' },
+    { type: 'faq', title: "Is Get'Edil free?", content: "Yes, Get'Edil is completely free. No payments, no subscriptions, no ads.", lang: 'en' },
+    { type: 'faq', title: 'What languages?', content: "Get'Edil speaks fluent Amharic and English. Voice notes work in both languages.", lang: 'en' },
     { type: 'faq', title: 'ጌት፟እድል ምንድነው?', content: 'ጌት፟እድል ለኢትዮጵያ ተማሪዎች ነፃ AI የትምህርት መድረክ ነው።', lang: 'am' },
     { type: 'faq', title: 'ስንት ያስከፍላል?', content: 'ጌት፟እድል ሙሉ በሙሉ ነፃ ነው።', lang: 'am' },
   ];
@@ -54,17 +49,15 @@ export async function seedContentEmbeddings(supabase: any) {
   for (const item of content) {
     try {
       const embedding = await generateEmbedding(item.content);
-      if (embedding.length > 0) {
-        await supabase.from('content_embeddings').insert({
-          content_type: item.type,
-          title: item.title,
-          content: item.content,
-          embedding,
-          language: item.lang,
-          metadata: {},
-        });
-        console.log('  ✅', item.title);
-      }
+      await supabase.from('content_embeddings').insert({
+        content_type: item.type,
+        title: item.title,
+        content: item.content,
+        embedding,
+        language: item.lang,
+        metadata: {},
+      });
+      console.log('  ✅', item.title);
     } catch (e: any) {
       console.error('  ❌', item.title, e.message);
     }
@@ -75,14 +68,12 @@ export async function seedContentEmbeddings(supabase: any) {
 export async function indexUserMessage(supabase: any, telegramId: number, role: string, content: string, topic: string = 'general') {
   try {
     const embedding = await generateEmbedding(content);
-    if (embedding.length > 0) {
-      await supabase.from('memory_embeddings').insert({
-        telegram_id: telegramId,
-        content: `${role}: ${content}`,
-        embedding,
-        topic,
-      });
-    }
+    await supabase.from('memory_embeddings').insert({
+      telegram_id: telegramId,
+      content: `${role}: ${content}`,
+      embedding,
+      topic,
+    });
   } catch {}
 }
 
@@ -90,19 +81,19 @@ export async function searchContext(supabase: any, query: string, telegramId?: n
   const results: string[] = [];
   try {
     const embedding = await generateEmbedding(query);
-    if (embedding.length === 0) return '';
     
     const { data: contentMatches } = await supabase.rpc('match_content', {
-      query_embedding: embedding, match_threshold: 0.4, match_count: limit,
+      query_embedding: embedding, match_threshold: 0.3, match_count: limit,
     });
     if (contentMatches) {
       for (const m of contentMatches) {
         results.push(`📚 **${m.title}**\n${m.content.slice(0, 200)}`);
       }
     }
+    
     if (telegramId) {
       const { data: memoryMatches } = await supabase.rpc('match_user_memory', {
-        query_embedding: embedding, match_threshold: 0.4, match_count: 3, user_id: telegramId,
+        query_embedding: embedding, match_threshold: 0.3, match_count: 3, user_id: telegramId,
       });
       if (memoryMatches) {
         for (const m of memoryMatches) {
@@ -118,12 +109,7 @@ export async function getUserProfileContext(supabase: any, telegramId: number): 
   try {
     const { data: courses } = await supabase.from('course_progress')
       .select('course_id, module_id').eq('telegram_id', telegramId).eq('completed', true);
-    const { data: topics } = await supabase.from('memory_embeddings')
-      .select('topic').eq('telegram_id', telegramId).order('created_at', { ascending: false }).limit(20);
     const completedModules = courses?.length || 0;
-    const topicList = topics ? [...new Set(topics.map((t: any) => t.topic))].slice(0, 5) : [];
-    return `Completed ${completedModules} course modules. Topics: ${topicList.join(', ') || 'general'}.`;
-  } catch {
-    return '';
-  }
+    return `Completed ${completedModules} course modules.`;
+  } catch { return ''; }
 }
