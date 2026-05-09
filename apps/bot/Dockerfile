@@ -19,3 +19,4 @@ EXPOSE 3000
 
 WORKDIR /app/apps/bot
 CMD ["node", "dist/app.js"]
+# Cache bust: Sat May  9 03:41:09 PDT 2026
