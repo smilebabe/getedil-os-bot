@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
+import WebSocket from 'ws';
 
 console.log('\nGETEDIL-OS-BOT\n');
 
@@ -11,11 +12,16 @@ console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
 let supabase: any = null;
 try {
-  supabase = createClient(
-    process.env.SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-  );
-  console.log('📦 Supabase connected');
+  const url = process.env.SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (url && key) {
+    supabase = createClient(url, key, {
+      auth: { persistSession: false },
+    });
+    console.log('📦 Supabase connected');
+  } else {
+    console.log('⚠️ Supabase URL or key missing');
+  }
 } catch(e: any) {
   supabase = null;
   console.log('⚠️ Supabase init failed:', e.message);
