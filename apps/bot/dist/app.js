@@ -139,7 +139,19 @@ bot.command('start', async (ctx) => {
     const uid = ctx.from?.id;
     if (uid)
         await saveProfile(uid, ctx.from?.first_name || 'Student', ctx.from?.username);
-    await ctx.reply('👋 Welcome to <b>Getedil</b>! 🚀\n\n📚 /courses | 💼 /jobs | 📝 /memory | 📊 /progress\n\nJust send me a message!', { parse_mode: 'HTML' });
+    await ctx.reply('👋 Welcome to <b>Getedil</b>! 🚀\n\n' +
+        'I\'m your AI tutor for AI engineering. I speak <b>Amharic</b> and <b>English</b>.\n\n' +
+        '<b>What I can do TODAY:</b>\n' +
+        '📚 /courses — Learn AI Engineering (5 modules)\n' +
+        '🎤 Send a voice note — I\'ll transcribe &amp; respond\n' +
+        '💼 /jobs — Ethiopian tech jobs\n' +
+        '📝 /memory — I remember our chats\n' +
+        '📊 /progress — Track your learning\n\n' +
+        '<b>Coming SOON:</b>\n' +
+        '🗣️ Voice responses (I\'ll talk back)\n' +
+        '🎯 Personalized job matching\n' +
+        '💻 More courses\n\n' +
+        'Try sending me a message or voice note! 🎤', { parse_mode: 'HTML' });
 });
 bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /help'); });
 bot.command('courses', async (ctx) => {
