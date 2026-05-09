@@ -176,7 +176,15 @@ createServer((req, res) => {
 }).listen(port, () => console.log('🏥 Health :' + port));
 
 console.log('🤖 Starting polling mode...');
-bot.launch({ dropPendingUpdates: true });
+bot.launch({ 
+  dropPendingUpdates: true,
+  allowedUpdates: ['message', 'callback_query']
+}).then(() => {
+  console.log('✅ Polling connected');
+}).catch((err: any) => {
+  console.log('⚠️ Polling error, retrying in 5s...');
+  setTimeout(() => bot.launch({ dropPendingUpdates: true }), 5000);
+});
 console.log('✅ Bot polling for messages...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
