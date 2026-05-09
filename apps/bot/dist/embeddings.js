@@ -8,7 +8,7 @@ exports.getUserProfileContext = getUserProfileContext;
 const generative_ai_1 = require("@google/generative-ai");
 const geminiEmbedder = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 async function generateEmbedding(text) {
-    const model = geminiEmbedder.getGenerativeModel({ model: 'text-embedding-004' });
+    const model = geminiEmbedder.getGenerativeModel({ model: 'embedding-001' });
     const result = await model.embedContent(text);
     return result.embedding.values;
 }
