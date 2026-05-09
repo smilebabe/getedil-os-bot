@@ -4,28 +4,10 @@ import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
 const WebSocket = require('ws');
+// Voice transcriber (uses gemini from line 77)
+let transcriber: VoiceTranscriber | null = null;
 
 console.log('\nGETEDIL-OS-BOT\n');
-
-// ============================================
-// Voice Transcriber
-// ============================================
-
-class VoiceTranscriber {
-  async transcribe(fileUrl: string): Promise<{ text: string; language: string }> {
-    const r = await fetch(fileUrl);
-    const buf = Buffer.from(await r.arrayBuffer());
-    const b64 = buf.toString('base64');
-    const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const res = await m.generateContent([
-      { text: 'Transcribe this audio. Output only the text. If Amharic, use Ge\'ez script.' },
-      { inlineData: { mimeType: 'audio/ogg', data: b64 } },
-    ]);
-    const text = res.response.text().trim();
-    return { text, language: /[\u1200-\u137F]/.test(text) ? 'am' : 'en' };
-  }
-}
-const transcriber = process.env.GEMINI_API_KEY ? new VoiceTranscriber() : null;
 
 // ============================================
 // Supabase (safe init)
@@ -94,6 +76,7 @@ const LESSONS: Record<string, string> = {
 // ============================================
 // AI
 // ============================================
+const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
 
 async function aiReply(msg: string): Promise<string> {
@@ -176,27 +159,23 @@ bot.command('progress', async (ctx) => {
   }
   await ctx.reply(m, { parse_mode: 'HTML' });
 });
-
-bot.on('voice', async (ctx) => {
-  if (!transcriber) {
-    await ctx.reply('🎤 Voice transcription not available.');
-    return;
-  }
+bot.on('voice', async (ctx: any) => {
+  if (!transcriber) { await ctx.reply('🎤 Voice not available.'); return; }
   const uid = ctx.from?.id;
   await ctx.reply('🎤 Transcribing...');
   try {
     const url = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
     const { text, language } = await transcriber.transcribe(url.href);
     console.log('🎤 Voice:', language, '-', text.slice(0, 80));
-    await ctx.reply(`📝 ${language === 'am' ? 'የተፃፈ' : 'Transcribed'}: "${text}"\n\n🤖 Thinking...`);
-    if (uid) await saveMsg(uid, 'user', `🎤 ${text}`);
+    await ctx.reply('📝 ' + (language === 'am' ? 'የተፃፈ' : 'Transcribed') + ': "' + text + '"\n\n🤖 Thinking...');
+    if (uid) await saveMsg(uid, 'user', '🎤 ' + text);
     await ctx.sendChatAction('typing');
     const reply = await aiReply(text);
     if (uid) await saveMsg(uid, 'assistant', reply);
     await ctx.reply(reply);
   } catch(e: any) {
     console.error('Voice error:', e.message);
-    await ctx.reply('❌ Could not transcribe. Please try again.');
+    await ctx.reply('❌ Could not transcribe. Try again.');
   }
 });
 
@@ -213,6 +192,29 @@ bot.on('text', async (ctx) => {
     await ctx.reply(reply);
   } catch { await ctx.reply('Error.'); }
 });
+
+// ============================================
+// Voice Handler
+// ============================================
+class VoiceTranscriber {
+  async transcribe(fileUrl: string): Promise<{ text: string; language: string }> {
+    const r = await fetch(fileUrl);
+    const buf = Buffer.from(await r.arrayBuffer());
+    const b64 = buf.toString('base64');
+    const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const res = await m.generateContent([
+      { text: 'Transcribe this audio. Output only the text. If Amharic, use Ge\'ez script.' },
+      { inlineData: { mimeType: 'audio/ogg', data: b64 } },
+    ]);
+    const text = res.response.text().trim();
+    return { text, language: /[\u1200-\u137F]/.test(text) ? 'am' : 'en' };
+  }
+}
+
+if (process.env.GEMINI_API_KEY) {
+  transcriber = new VoiceTranscriber();
+  console.log('🎤 Voice enabled');
+}
 
 // ============================================
 // Start

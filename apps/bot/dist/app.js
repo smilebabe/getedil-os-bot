@@ -4,29 +4,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const telegraf_1 = require("telegraf");
+const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
 const WebSocket = require('ws');
+// Voice transcriber (uses gemini from line 77)
+let transcriber = null;
 console.log('\nGETEDIL-OS-BOT\n');
-// ============================================
-// Voice Transcriber
-// ============================================
-class VoiceTranscriber {
-    async transcribe(fileUrl) {
-        const r = await fetch(fileUrl);
-        const buf = Buffer.from(await r.arrayBuffer());
-        const b64 = buf.toString('base64');
-        const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        const res = await m.generateContent([
-            { text: 'Transcribe this audio. Output only the text. If Amharic, use Ge\'ez script.' },
-            { inlineData: { mimeType: 'audio/ogg', data: b64 } },
-        ]);
-        const text = res.response.text().trim();
-        return { text, language: /[\u1200-\u137F]/.test(text) ? 'am' : 'en' };
-    }
-}
-const transcriber = process.env.GEMINI_API_KEY ? new VoiceTranscriber() : null;
 // ============================================
 // Supabase (safe init)
 // ============================================
@@ -127,6 +112,7 @@ const LESSONS = {
 // ============================================
 // AI
 // ============================================
+const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
 async function aiReply(msg) {
     if (/[\u1200-\u137F]/.test(msg) && process.env.GEMINI_API_KEY) {
@@ -229,7 +215,7 @@ bot.command('progress', async (ctx) => {
 });
 bot.on('voice', async (ctx) => {
     if (!transcriber) {
-        await ctx.reply('🎤 Voice transcription not available.');
+        await ctx.reply('🎤 Voice not available.');
         return;
     }
     const uid = ctx.from?.id;
@@ -238,9 +224,9 @@ bot.on('voice', async (ctx) => {
         const url = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
         const { text, language } = await transcriber.transcribe(url.href);
         console.log('🎤 Voice:', language, '-', text.slice(0, 80));
-        await ctx.reply(`📝 ${language === 'am' ? 'የተፃፈ' : 'Transcribed'}: "${text}"\n\n🤖 Thinking...`);
+        await ctx.reply('📝 ' + (language === 'am' ? 'የተፃፈ' : 'Transcribed') + ': "' + text + '"\n\n🤖 Thinking...');
         if (uid)
-            await saveMsg(uid, 'user', `🎤 ${text}`);
+            await saveMsg(uid, 'user', '🎤 ' + text);
         await ctx.sendChatAction('typing');
         const reply = await aiReply(text);
         if (uid)
@@ -249,7 +235,7 @@ bot.on('voice', async (ctx) => {
     }
     catch (e) {
         console.error('Voice error:', e.message);
-        await ctx.reply('❌ Could not transcribe. Please try again.');
+        await ctx.reply('❌ Could not transcribe. Try again.');
     }
 });
 bot.on('text', async (ctx) => {
@@ -273,6 +259,27 @@ bot.on('text', async (ctx) => {
         await ctx.reply('Error.');
     }
 });
+// ============================================
+// Voice Handler
+// ============================================
+class VoiceTranscriber {
+    async transcribe(fileUrl) {
+        const r = await fetch(fileUrl);
+        const buf = Buffer.from(await r.arrayBuffer());
+        const b64 = buf.toString('base64');
+        const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const res = await m.generateContent([
+            { text: 'Transcribe this audio. Output only the text. If Amharic, use Ge\'ez script.' },
+            { inlineData: { mimeType: 'audio/ogg', data: b64 } },
+        ]);
+        const text = res.response.text().trim();
+        return { text, language: /[\u1200-\u137F]/.test(text) ? 'am' : 'en' };
+    }
+}
+if (process.env.GEMINI_API_KEY) {
+    transcriber = new VoiceTranscriber();
+    console.log('🎤 Voice enabled');
+}
 // ============================================
 // Start
 // ============================================
