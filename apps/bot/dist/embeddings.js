@@ -5,12 +5,27 @@ exports.seedContentEmbeddings = seedContentEmbeddings;
 exports.indexUserMessage = indexUserMessage;
 exports.searchContext = searchContext;
 exports.getUserProfileContext = getUserProfileContext;
-const generative_ai_1 = require("@google/generative-ai");
-const geminiEmbedder = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+/**
+ * Generate embeddings using Gemini's text-embedding-004 via REST API.
+ * Returns 768-dimensional vector.
+ */
 async function generateEmbedding(text) {
-    const model = geminiEmbedder.getGenerativeModel({ model: 'embedding-001' });
-    const result = await model.embedContent(text);
-    return result.embedding.values;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: 'models/text-embedding-004',
+            content: { parts: [{ text }] }
+        })
+    });
+    if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Embedding API error: ${response.status} ${err.slice(0, 200)}`);
+    }
+    const data = await response.json();
+    return data.embedding?.values || [];
 }
 async function seedContentEmbeddings(supabase) {
     const { data: existing } = await supabase.from('content_embeddings').select('id').limit(1);
@@ -30,24 +45,27 @@ async function seedContentEmbeddings(supabase) {
         { type: 'job', title: 'Python Developer', content: 'Multiple companies. Remote or Addis Ababa. Contract Python work.', lang: 'en' },
         { type: 'job', title: 'Data Scientist', content: 'Commercial Bank of Ethiopia. Addis Ababa. Data analytics and ML.', lang: 'en' },
         { type: 'job', title: 'Freelance AI Trainer', content: 'Upwork and Fiverr. Remote. Train AI models.', lang: 'en' },
-        { type: 'faq', title: 'What is Getedil?', content: 'Getedil is a free AI learning platform for Ethiopian students with courses, voice transcription, and job listings.', lang: 'en' },
-        { type: 'faq', title: 'Is Getedil free?', content: 'Yes, Getedil is completely free. No payments, no subscriptions, no ads.', lang: 'en' },
-        { type: 'faq', title: 'What languages?', content: 'Getedil speaks fluent Amharic and English. Voice notes work in both languages.', lang: 'en' },
-        { type: 'faq', title: 'ገተድል ምንድነው?', content: 'ገተድል ለኢትዮጵያ ተማሪዎች ነፃ AI የትምህርት መድረክ ነው።', lang: 'am' },
-        { type: 'faq', title: 'ስንት ያስከፍላል?', content: 'ገተድል ሙሉ በሙሉ ነፃ ነው።', lang: 'am' },
+        { type: 'faq', title: 'What is Get\'Edil?', content: 'Get\'Edil (ጌት፟እድል) is a free AI learning platform for Ethiopian students with courses, voice transcription, and job listings.', lang: 'en' },
+        { type: 'faq', title: 'Is Get\'Edil free?', content: 'Yes, Get\'Edil is completely free. No payments, no subscriptions, no ads.', lang: 'en' },
+        { type: 'faq', title: 'What languages?', content: 'Get\'Edil speaks fluent Amharic and English. Voice notes work in both languages.', lang: 'en' },
+        { type: 'faq', title: 'ጌት፟እድል ምንድነው?', content: 'ጌት፟እድል ለኢትዮጵያ ተማሪዎች ነፃ AI የትምህርት መድረክ ነው።', lang: 'am' },
+        { type: 'faq', title: 'ስንት ያስከፍላል?', content: 'ጌት፟እድል ሙሉ በሙሉ ነፃ ነው።', lang: 'am' },
     ];
     console.log('📚 Seeding', content.length, 'embeddings...');
     for (const item of content) {
         try {
             const embedding = await generateEmbedding(item.content);
-            await supabase.from('content_embeddings').insert({
-                content_type: item.type,
-                title: item.title,
-                content: item.content,
-                embedding,
-                language: item.lang,
-                metadata: {},
-            });
+            if (embedding.length > 0) {
+                await supabase.from('content_embeddings').insert({
+                    content_type: item.type,
+                    title: item.title,
+                    content: item.content,
+                    embedding,
+                    language: item.lang,
+                    metadata: {},
+                });
+                console.log('  ✅', item.title);
+            }
         }
         catch (e) {
             console.error('  ❌', item.title, e.message);
@@ -58,12 +76,14 @@ async function seedContentEmbeddings(supabase) {
 async function indexUserMessage(supabase, telegramId, role, content, topic = 'general') {
     try {
         const embedding = await generateEmbedding(content);
-        await supabase.from('memory_embeddings').insert({
-            telegram_id: telegramId,
-            content: `${role}: ${content}`,
-            embedding,
-            topic,
-        });
+        if (embedding.length > 0) {
+            await supabase.from('memory_embeddings').insert({
+                telegram_id: telegramId,
+                content: `${role}: ${content}`,
+                embedding,
+                topic,
+            });
+        }
     }
     catch { }
 }
@@ -71,6 +91,8 @@ async function searchContext(supabase, query, telegramId, limit = 4) {
     const results = [];
     try {
         const embedding = await generateEmbedding(query);
+        if (embedding.length === 0)
+            return '';
         const { data: contentMatches } = await supabase.rpc('match_content', {
             query_embedding: embedding, match_threshold: 0.4, match_count: limit,
         });
