@@ -7,13 +7,12 @@ const telegraf_1 = require("telegraf");
 const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
-const http_1 = require("http");
 const fs_1 = require("fs");
 const path_1 = require("path");
 // ============================================
 // Global Error Handlers
 // ============================================
-process.on('uncaughtException', (err) => console.error('💥 UNCAUGHT:', err));
+process.on('uncaughtException', (err) => console.error('💥 UNCAUGHT:', err.message));
 process.on('unhandledRejection', (reason) => console.error('💥 REJECTION:', reason));
 // ============================================
 // Supabase (lazy init, fails gracefully)
@@ -28,7 +27,7 @@ function getDb() {
         return supabase;
     }
     catch (e) {
-        console.error('❌ Supabase init failed:', e.message);
+        console.error('❌ Supabase init:', e.message);
         return null;
     }
 }
@@ -39,9 +38,7 @@ async function saveMessage(telegramId, role, content) {
             return;
         await db.from('conversation_history').insert({ telegram_id: telegramId, role, content: content.slice(0, 4000) });
     }
-    catch (e) {
-        console.error('❌ Save error:', e.message);
-    }
+    catch { }
 }
 async function getRecentMessages(telegramId, limit = 6) {
     try {
@@ -74,9 +71,7 @@ async function upsertProfile(telegramId, firstName, username) {
             return;
         await db.from('user_profiles').upsert({ telegram_id: telegramId, first_name: firstName, username: username || null, last_active_at: new Date().toISOString() }, { onConflict: 'telegram_id' });
     }
-    catch (e) {
-        console.error('❌ Profile error:', e.message);
-    }
+    catch { }
 }
 async function markModuleDone(telegramId, courseId, moduleId) {
     try {
@@ -85,9 +80,7 @@ async function markModuleDone(telegramId, courseId, moduleId) {
             return;
         await db.from('course_progress').upsert({ telegram_id: telegramId, course_id: courseId, module_id: moduleId, completed: true, completed_at: new Date().toISOString() }, { onConflict: 'telegram_id, course_id, module_id' });
     }
-    catch (e) {
-        console.error('❌ Progress error:', e.message);
-    }
+    catch { }
 }
 async function getCompletedModules(telegramId, courseId) {
     try {
@@ -109,13 +102,13 @@ async function getAllCompletedCourses(telegramId) {
         const { data } = await db.from('course_progress').select('course_id, module_id').eq('telegram_id', telegramId).eq('completed', true);
         if (!data)
             return [];
-        const grouped = {};
+        const g = {};
         for (const r of data) {
-            if (!grouped[r.course_id])
-                grouped[r.course_id] = [];
-            grouped[r.course_id].push(r.module_id);
+            if (!g[r.course_id])
+                g[r.course_id] = [];
+            g[r.course_id].push(r.module_id);
         }
-        return Object.entries(grouped).map(([course, modules]) => ({ course, completed: modules.length, total: COURSES[course]?.modules.length || 0 }));
+        return Object.entries(g).map(([c, m]) => ({ course: c, completed: m.length, total: COURSES[c]?.modules.length || 0 }));
     }
     catch {
         return [];
@@ -277,28 +270,20 @@ bot.on('text', async (ctx) => {
             await saveMessage(id, 'assistant', reply);
         await ctx.reply(reply);
     }
-    catch (e) {
-        console.error('❌ Text error:', e.message);
-        await ctx.reply('Error. Try again.');
+    catch {
+        await ctx.reply('Error.');
     }
 });
 bot.catch(async (err) => { console.error('❌ Bot error:', err); });
 // ============================================
-// Main
+// Main — Telegraf creates its own server
 // ============================================
 async function main() {
     console.log('\nGETEDIL-OS-BOT\n');
     const port = parseInt(process.env.PORT || '3000');
     const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
-    (0, http_1.createServer)((req, res) => {
-        if (req.url === '/health') {
-            res.writeHead(200).end('OK');
-            return;
-        }
-        res.writeHead(200).end('GETEDIL');
-    }).listen(port, () => console.log('🏥 Health :' + port));
     await bot.launch({ webhook: { domain: new URL(url).hostname, port } });
-    console.log('✅ Webhook at:', url);
+    console.log('✅ Webhook on port', port, '→', url);
 }
 main().catch(e => { console.error('❌ Fatal:', e); process.exit(1); });
 //# sourceMappingURL=app.js.map

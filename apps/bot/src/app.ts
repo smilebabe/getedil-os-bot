@@ -2,14 +2,13 @@ import { Telegraf } from 'telegraf';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
-import { createServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // ============================================
 // Global Error Handlers
 // ============================================
-process.on('uncaughtException', (err) => console.error('💥 UNCAUGHT:', err));
+process.on('uncaughtException', (err) => console.error('💥 UNCAUGHT:', err.message));
 process.on('unhandledRejection', (reason) => console.error('💥 REJECTION:', reason));
 
 // ============================================
@@ -19,79 +18,38 @@ let supabase: any = null;
 function getDb(): any {
   if (supabase) return supabase;
   try {
-    supabase = createClient(
-      process.env.SUPABASE_URL || '',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    );
+    supabase = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '');
     console.log('📦 Supabase connected');
     return supabase;
-  } catch(e: any) {
-    console.error('❌ Supabase init failed:', e.message);
-    return null;
-  }
+  } catch(e: any) { console.error('❌ Supabase init:', e.message); return null; }
 }
 
 async function saveMessage(telegramId: number, role: string, content: string) {
-  try {
-    const db = getDb();
-    if (!db) return;
-    await db.from('conversation_history').insert({ telegram_id: telegramId, role, content: content.slice(0, 4000) });
-  } catch(e: any) { console.error('❌ Save error:', e.message); }
+  try { const db = getDb(); if (!db) return; await db.from('conversation_history').insert({ telegram_id: telegramId, role, content: content.slice(0, 4000) }); } catch {}
 }
 
 async function getRecentMessages(telegramId: number, limit = 6): Promise<Array<{ role: string; content: string }>> {
-  try {
-    const db = getDb();
-    if (!db) return [];
-    const { data } = await db.from('conversation_history').select('role, content').eq('telegram_id', telegramId).order('created_at', { ascending: false }).limit(limit);
-    return (data || []).reverse();
-  } catch { return []; }
+  try { const db = getDb(); if (!db) return []; const { data } = await db.from('conversation_history').select('role, content').eq('telegram_id', telegramId).order('created_at', { ascending: false }).limit(limit); return (data || []).reverse(); } catch { return []; }
 }
 
 async function getMessageCount(telegramId: number): Promise<number> {
-  try {
-    const db = getDb();
-    if (!db) return 0;
-    const { count } = await db.from('conversation_history').select('*', { count: 'exact', head: true }).eq('telegram_id', telegramId);
-    return count || 0;
-  } catch { return 0; }
+  try { const db = getDb(); if (!db) return 0; const { count } = await db.from('conversation_history').select('*', { count: 'exact', head: true }).eq('telegram_id', telegramId); return count || 0; } catch { return 0; }
 }
 
 async function upsertProfile(telegramId: number, firstName: string, username?: string) {
-  try {
-    const db = getDb();
-    if (!db) return;
-    await db.from('user_profiles').upsert({ telegram_id: telegramId, first_name: firstName, username: username || null, last_active_at: new Date().toISOString() }, { onConflict: 'telegram_id' });
-  } catch(e: any) { console.error('❌ Profile error:', e.message); }
+  try { const db = getDb(); if (!db) return; await db.from('user_profiles').upsert({ telegram_id: telegramId, first_name: firstName, username: username || null, last_active_at: new Date().toISOString() }, { onConflict: 'telegram_id' }); } catch {}
 }
 
 async function markModuleDone(telegramId: number, courseId: string, moduleId: string) {
-  try {
-    const db = getDb();
-    if (!db) return;
-    await db.from('course_progress').upsert({ telegram_id: telegramId, course_id: courseId, module_id: moduleId, completed: true, completed_at: new Date().toISOString() }, { onConflict: 'telegram_id, course_id, module_id' });
-  } catch(e: any) { console.error('❌ Progress error:', e.message); }
+  try { const db = getDb(); if (!db) return; await db.from('course_progress').upsert({ telegram_id: telegramId, course_id: courseId, module_id: moduleId, completed: true, completed_at: new Date().toISOString() }, { onConflict: 'telegram_id, course_id, module_id' }); } catch {}
 }
 
 async function getCompletedModules(telegramId: number, courseId: string): Promise<string[]> {
-  try {
-    const db = getDb();
-    if (!db) return [];
-    const { data } = await db.from('course_progress').select('module_id').eq('telegram_id', telegramId).eq('course_id', courseId).eq('completed', true);
-    return (data || []).map((r: any) => r.module_id);
-  } catch { return []; }
+  try { const db = getDb(); if (!db) return []; const { data } = await db.from('course_progress').select('module_id').eq('telegram_id', telegramId).eq('course_id', courseId).eq('completed', true); return (data || []).map((r: any) => r.module_id); } catch { return []; }
 }
 
 async function getAllCompletedCourses(telegramId: number): Promise<Array<{ course: string; completed: number; total: number }>> {
-  try {
-    const db = getDb();
-    if (!db) return [];
-    const { data } = await db.from('course_progress').select('course_id, module_id').eq('telegram_id', telegramId).eq('completed', true);
-    if (!data) return [];
-    const grouped: Record<string, string[]> = {};
-    for (const r of data) { if (!grouped[r.course_id]) grouped[r.course_id] = []; grouped[r.course_id]!.push(r.module_id); }
-    return Object.entries(grouped).map(([course, modules]) => ({ course, completed: modules.length, total: COURSES[course]?.modules.length || 0 }));
-  } catch { return []; }
+  try { const db = getDb(); if (!db) return []; const { data } = await db.from('course_progress').select('course_id, module_id').eq('telegram_id', telegramId).eq('completed', true); if (!data) return []; const g: Record<string, string[]> = {}; for (const r of data) { if (!g[r.course_id]) g[r.course_id] = []; g[r.course_id]!.push(r.module_id); } return Object.entries(g).map(([c, m]) => ({ course: c, completed: m.length, total: COURSES[c]?.modules.length || 0 })); } catch { return []; }
 }
 
 // ============================================
@@ -130,16 +88,9 @@ class AIClient {
   }
   async generateResponse(msg: string): Promise<string> {
     if (/[\u1200-\u137F]/.test(msg) && process.env.GEMINI_API_KEY) {
-      try {
-        const m = this.gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `Be helpful. Speak Amharic.\n\n${msg}` }] }] });
-        return r.response.text();
-      } catch {}
+      try { const m = this.gemini.getGenerativeModel({ model: 'gemini-2.5-flash' }); const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `Be helpful. Speak Amharic.\n\n${msg}` }] }] }); return r.response.text(); } catch {}
     }
-    try {
-      const r = await this.groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: msg }], max_tokens: 600 });
-      return r.choices[0]?.message?.content || 'Error.';
-    } catch { return 'AI unavailable.'; }
+    try { const r = await this.groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: msg }], max_tokens: 600 }); return r.choices[0]?.message?.content || 'Error.'; } catch { return 'AI unavailable.'; }
   }
 }
 
@@ -209,32 +160,21 @@ bot.on('text', async (ctx) => {
   if (msg.startsWith('/')) return;
   const id = ctx.from?.id;
   console.log('📩', ctx.from?.first_name, ':', msg.slice(0, 60));
-  if (id) {
-    await upsertProfile(id, ctx.from?.first_name || '', ctx.from?.username);
-    await saveMessage(id, 'user', msg);
-  }
+  if (id) { await upsertProfile(id, ctx.from?.first_name || '', ctx.from?.username); await saveMessage(id, 'user', msg); }
   await ctx.sendChatAction('typing');
-  try {
-    const reply = await ai.generateResponse(msg);
-    if (id) await saveMessage(id, 'assistant', reply);
-    await ctx.reply(reply);
-  } catch(e: any) { console.error('❌ Text error:', e.message); await ctx.reply('Error. Try again.'); }
+  try { const reply = await ai.generateResponse(msg); if (id) await saveMessage(id, 'assistant', reply); await ctx.reply(reply); } catch { await ctx.reply('Error.'); }
 });
 
 bot.catch(async (err) => { console.error('❌ Bot error:', err); });
 
 // ============================================
-// Main
+// Main — Telegraf creates its own server
 // ============================================
 async function main() {
   console.log('\nGETEDIL-OS-BOT\n');
   const port = parseInt(process.env.PORT || '3000');
   const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
-  createServer((req, res) => {
-    if (req.url === '/health') { res.writeHead(200).end('OK'); return; }
-    res.writeHead(200).end('GETEDIL');
-  }).listen(port, () => console.log('🏥 Health :' + port));
   await bot.launch({ webhook: { domain: new URL(url).hostname, port } });
-  console.log('✅ Webhook at:', url);
+  console.log('✅ Webhook on port', port, '→', url);
 }
 main().catch(e => { console.error('❌ Fatal:', e); process.exit(1); });
