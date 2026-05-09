@@ -3,8 +3,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
 
 console.log('\nGETEDIL-OS-BOT\n');
 
