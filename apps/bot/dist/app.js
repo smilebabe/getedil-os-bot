@@ -8,8 +8,11 @@ const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
+const embeddings_1 = require("./embeddings");
 const WebSocket = require('ws');
-// Voice transcriber (uses gemini from line 77)
+// AI clients
+const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
 let transcriber = null;
 console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
@@ -24,6 +27,7 @@ try {
             auth: { persistSession: false },
         });
         console.log('📦 Supabase connected');
+        (0, embeddings_1.seedContentEmbeddings)(supabase).catch(() => { });
     }
     else {
         console.log('⚠️ Supabase URL or key missing');
@@ -112,19 +116,31 @@ const LESSONS = {
 // ============================================
 // AI
 // ============================================
-const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
-async function aiReply(msg) {
+async function aiReply(msg, telegramId) {
+    let context = '';
+    if (supabase) {
+        try {
+            const knowledgeContext = await (0, embeddings_1.searchContext)(supabase, msg, telegramId, 4);
+            if (knowledgeContext)
+                context = 'Relevant information:\n\n' + knowledgeContext + '\n\n';
+            if (telegramId) {
+                const profile = await (0, embeddings_1.getUserProfileContext)(supabase, telegramId);
+                if (profile)
+                    context += 'About user: ' + profile + '\n\n';
+            }
+        }
+        catch { }
+    }
     if (/[\u1200-\u137F]/.test(msg) && process.env.GEMINI_API_KEY) {
         try {
             const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-            const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `You are Getedil, an AI tutor for Ethiopian students. Speak natural Amharic.\n\nStudent: ${msg}` }] }] });
+            const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `${context}You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). Speak natural Amharic.\n\nStudent: ${msg}` }] }] });
             return r.response.text();
         }
         catch { }
     }
     try {
-        const r = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: msg }], max_tokens: 600 });
+        const r = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: `You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). ${context}` }, { role: 'user', content: msg }], max_tokens: 600 });
         return r.choices[0]?.message?.content || 'Error.';
     }
     catch {
@@ -139,7 +155,7 @@ bot.command('start', async (ctx) => {
     const uid = ctx.from?.id;
     if (uid)
         await saveProfile(uid, ctx.from?.first_name || 'Student', ctx.from?.username);
-    await ctx.reply('👋 Welcome to <b>Getedil</b>! 🚀\n\n' +
+    await ctx.reply('👋 Welcome to <b>Get\'Edil</b> (ጌት፟እድል)! 🚀\n\n' +
         'I\'m your AI tutor for AI engineering. I speak <b>Amharic</b> and <b>English</b>.\n\n' +
         '<b>What I can do TODAY:</b>\n' +
         '📚 /courses — Learn AI Engineering (5 modules)\n' +
@@ -254,12 +270,17 @@ bot.on('voice', async (ctx) => {
         const { text, language } = await transcriber.transcribe(url.href);
         console.log('🎤 Voice:', language, '-', text.slice(0, 80));
         await ctx.reply('📝 ' + (language === 'am' ? 'የተፃፈ' : 'Transcribed') + ': "' + text + '"\n\n🤖 Thinking...');
-        if (uid)
+        if (uid) {
             await saveMsg(uid, 'user', '🎤 ' + text);
+            // Index voice message
+            (0, embeddings_1.indexUserMessage)(supabase, uid, 'user', text).catch(() => { });
+        }
         await ctx.sendChatAction('typing');
-        const reply = await aiReply(text);
-        if (uid)
+        const reply = await aiReply(text, uid);
+        if (uid) {
             await saveMsg(uid, 'assistant', reply);
+            (0, embeddings_1.indexUserMessage)(supabase, uid, 'assistant', reply).catch(() => { });
+        }
         await ctx.reply(reply);
     }
     catch (e) {
@@ -276,12 +297,17 @@ bot.on('text', async (ctx) => {
     if (uid) {
         await saveProfile(uid, ctx.from?.first_name || '', ctx.from?.username);
         await saveMsg(uid, 'user', msg);
+        // Index message for semantic search
+        (0, embeddings_1.indexUserMessage)(supabase, uid, 'user', msg).catch(() => { });
     }
     await ctx.sendChatAction('typing');
     try {
-        const reply = await aiReply(msg);
-        if (uid)
+        const reply = await aiReply(msg, uid);
+        if (uid) {
             await saveMsg(uid, 'assistant', reply);
+            // Index AI response for future context
+            (0, embeddings_1.indexUserMessage)(supabase, uid, 'assistant', reply).catch(() => { });
+        }
         await ctx.reply(reply);
     }
     catch {
