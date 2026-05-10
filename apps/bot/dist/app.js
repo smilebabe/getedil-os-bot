@@ -13,6 +13,30 @@ const WebSocket = require('ws');
 // AI clients
 const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
+// Fine-tuned Amharic model (Hugging Face)
+async function hfAmharicReply(msg) {
+    if (!process.env.HF_API_KEY)
+        return null;
+    try {
+        const r = await fetch('https://api-inference.huggingface.co/models/EthioFX/getedil-amharic-v1', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.HF_API_KEY}` },
+            body: JSON.stringify({
+                inputs: `<|system|>You are Gete (ጌጤ), an AI tutor for Get'Edil (ጌት፟እድል). Speak natural Amharic.</s><|user|>${msg}</s><|assistant|>`,
+                parameters: { max_new_tokens: 300, temperature: 0.7 }
+            }),
+        });
+        const d = await r.json();
+        if (d.error) {
+            console.log('HF error:', d.error);
+            return null;
+        }
+        return d[0]?.generated_text?.split('<|assistant|>').pop()?.trim() || null;
+    }
+    catch {
+        return null;
+    }
+}
 let transcriber = null;
 console.log('\nGETEDIL-OS-BOT\n');
 // ============================================
@@ -131,232 +155,239 @@ async function aiReply(msg, telegramId) {
         }
         catch { }
     }
-    if (/[\u1200-\u137F]/.test(msg) && process.env.GEMINI_API_KEY) {
-        try {
-            const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-            const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `${context}You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). Speak natural Amharic.\n\nStudent: ${msg}` }] }] });
-            return r.response.text();
+    if (/[\u1200-\u137F]/.test(msg)) {
+        // Try fine-tuned model first
+        const hfReply = await hfAmharicReply(msg);
+        if (hfReply)
+            return hfReply;
+        // Fallback to Gemini
+        if (process.env.GEMINI_API_KEY) {
+            try {
+                const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+                const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `${context}You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). Speak natural Amharic.\n\nStudent: ${msg}` }] }] });
+                return r.response.text();
+            }
+            catch { }
         }
-        catch { }
+        try {
+            const r = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: `You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). ${context}` }, { role: 'user', content: msg }], max_tokens: 600 });
+            return r.choices[0]?.message?.content || 'Error.';
+        }
+        catch {
+            return 'AI unavailable.';
+        }
     }
-    try {
-        const r = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: `You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). ${context}` }, { role: 'user', content: msg }], max_tokens: 600 });
-        return r.choices[0]?.message?.content || 'Error.';
-    }
-    catch {
-        return 'AI unavailable.';
-    }
-}
-// ============================================
-// Bot
-// ============================================
-const bot = new telegraf_1.Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
-bot.command('start', async (ctx) => {
-    const uid = ctx.from?.id;
-    if (uid)
-        await saveProfile(uid, ctx.from?.first_name || 'Student', ctx.from?.username);
-    await ctx.reply('👋 Welcome to <b>Get\'Edil</b> (ጌት፟እድል)! 🚀\n\n' +
-        'I\'m your AI tutor for AI engineering. I speak <b>Amharic</b> and <b>English</b>.\n\n' +
-        '<b>What I can do TODAY:</b>\n' +
-        '📚 /courses — Learn AI Engineering (5 modules)\n' +
-        '🎤 Send a voice note — I\'ll transcribe &amp; respond\n' +
-        '💼 /jobs — Ethiopian tech jobs\n' +
-        '📝 /memory — I remember our chats\n' +
-        '📊 /progress — Track your learning\n\n' +
-        '<b>Coming SOON:</b>\n' +
-        '🗣️ Voice responses (I\'ll talk back)\n' +
-        '🎯 Personalized job matching\n' +
-        '💻 More courses\n\n' +
-        'Try sending me a message or voice note! 🎤', { parse_mode: 'HTML' });
-});
-bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /help'); });
-bot.command('courses', async (ctx) => {
-    await ctx.reply('📚 <b>Courses</b>\n\n<b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro\n\nStart with /learn ai intro', { parse_mode: 'HTML' });
-});
-bot.command('learn', async (ctx) => {
-    const args = ctx.message.text.split(' ').slice(1);
-    const uid = ctx.from?.id;
-    if (!args.length) {
-        await ctx.reply('Usage: /learn <course> <module>\n\nExample: /learn ai intro\nTry /courses');
-        return;
-    }
-    const courseId = args[0];
-    const modId = args[1];
-    const course = COURSES[courseId];
-    if (!course) {
-        await ctx.reply('Course not found. Try /courses');
-        return;
-    }
-    // Show course overview
-    if (!modId) {
-        const done = uid ? await getDone(uid, courseId) : [];
-        const list = course.mods.map((m, i) => `${i + 1}. ${m}${done.includes(m) ? ' ✅' : ''}\n   /learn ${courseId} ${m}`).join('\n\n');
-        await ctx.reply(`📚 <b>${course.title}</b>\n\n${list}`, { parse_mode: 'HTML' });
-        return;
-    }
-    // Show lesson
-    const key = `${courseId}/${modId}`;
-    const lesson = LESSONS[key] || '📖 Module coming soon!';
-    await ctx.reply(lesson, { parse_mode: 'HTML' });
-    // Mark done
-    if (uid)
-        await markDone(uid, courseId, modId);
-});
-bot.command('jobs', async (ctx) => {
-    const jobs = [
-        { t: 'AI/ML Engineer', c: 'Ethiopian AI Institute', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-        { t: 'Full Stack Developer', c: 'Safaricom Ethiopia', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-        { t: 'Python Developer', c: 'Multiple Companies', l: 'Remote / Addis Ababa', u: 'https://dereja.com' },
-        { t: 'Data Scientist', c: 'Commercial Bank of Ethiopia', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-        { t: 'Freelance AI Trainer', c: 'Upwork / Fiverr', l: 'Remote', u: 'https://www.upwork.com' },
-        { t: 'React Native Developer', c: 'Gebeya Inc.', l: 'Addis Ababa', u: 'https://dereja.com' },
-        { t: 'Cloud Engineer (AWS)', c: 'Raxio Data Centre', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-        { t: 'IT Support Specialist', c: 'Dashen Bank', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-        { t: 'Mobile App Developer', c: 'Ethio Telecom', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-        { t: 'Blockchain Developer', c: 'Input Output (IOHK)', l: 'Addis Ababa / Remote', u: 'https://www.ethiojobs.net' },
-        { t: 'DevOps Engineer', c: 'Kifiya Financial', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-        { t: 'UX/UI Designer', c: 'Zemen Bank', l: 'Addis Ababa', u: 'https://dereja.com' },
-    ];
-    const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' +
-        jobs.map(j => `<b>${j.t}</b>\n🏢 ${j.c}\n📍 ${j.l}\n🔗 ${j.u}`).join('\n\n') +
-        '\n\n<i>Curated weekly from ethiojobs.net & dereja.com</i>';
-    await ctx.reply(msg, { parse_mode: 'HTML' });
-});
-bot.command('memory', async (ctx) => {
-    const uid = ctx.from?.id;
-    if (!uid) {
-        await ctx.reply('Cannot identify user.');
-        return;
-    }
-    const total = await countMsgs(uid);
-    if (!total) {
-        await ctx.reply('📝 No messages yet. Send me something!');
-        return;
-    }
-    const recent = await getRecent(uid, 4);
-    let m = `📝 <b>Your Memory</b> (${total} messages)\n\n`;
-    for (const r of recent)
-        m += `${r.role === 'user' ? '👤' : '🤖'} ${r.content.slice(0, 100)}\n`;
-    await ctx.reply(m, { parse_mode: 'HTML' });
-});
-bot.command('progress', async (ctx) => {
-    const uid = ctx.from?.id;
-    if (!uid) {
-        await ctx.reply('Cannot identify user.');
-        return;
-    }
-    const msgs = await countMsgs(uid);
-    const courses = await getCourseStats(uid);
-    let m = `📊 <b>Your Progress</b>\n\n💬 Messages: ${msgs}\n\n`;
-    if (courses.length) {
-        m += '<b>Courses:</b>\n';
-        for (const c of courses)
-            m += `📚 ${c.course}: ${c.done}/${c.total} modules\n`;
-    }
-    else {
-        m += '📚 No courses started. Try /learn ai intro!';
-    }
-    await ctx.reply(m, { parse_mode: 'HTML' });
-});
-bot.on('voice', async (ctx) => {
-    if (!transcriber) {
-        await ctx.reply('🎤 Voice not available.');
-        return;
-    }
-    const uid = ctx.from?.id;
-    await ctx.reply('🎤 Transcribing...');
-    try {
-        const url = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
-        const { text, language } = await transcriber.transcribe(url.href);
-        console.log('🎤 Voice:', language, '-', text.slice(0, 80));
-        await ctx.reply('📝 ' + (language === 'am' ? 'የተፃፈ' : 'Transcribed') + ': "' + text + '"\n\n🤖 Thinking...');
+    // ============================================
+    // Bot
+    // ============================================
+    const bot = new telegraf_1.Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
+    bot.command('start', async (ctx) => {
+        const uid = ctx.from?.id;
+        if (uid)
+            await saveProfile(uid, ctx.from?.first_name || 'Student', ctx.from?.username);
+        await ctx.reply('👋 Welcome to <b>Get\'Edil</b> (ጌት፟እድል)! 🚀\n\n' +
+            'I\'m your AI tutor for AI engineering. I speak <b>Amharic</b> and <b>English</b>.\n\n' +
+            '<b>What I can do TODAY:</b>\n' +
+            '📚 /courses — Learn AI Engineering (5 modules)\n' +
+            '🎤 Send a voice note — I\'ll transcribe &amp; respond\n' +
+            '💼 /jobs — Ethiopian tech jobs\n' +
+            '📝 /memory — I remember our chats\n' +
+            '📊 /progress — Track your learning\n\n' +
+            '<b>Coming SOON:</b>\n' +
+            '🗣️ Voice responses (I\'ll talk back)\n' +
+            '🎯 Personalized job matching\n' +
+            '💻 More courses\n\n' +
+            'Try sending me a message or voice note! 🎤', { parse_mode: 'HTML' });
+    });
+    bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /help'); });
+    bot.command('courses', async (ctx) => {
+        await ctx.reply('📚 <b>Courses</b>\n\n<b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro\n\nStart with /learn ai intro', { parse_mode: 'HTML' });
+    });
+    bot.command('learn', async (ctx) => {
+        const args = ctx.message.text.split(' ').slice(1);
+        const uid = ctx.from?.id;
+        if (!args.length) {
+            await ctx.reply('Usage: /learn <course> <module>\n\nExample: /learn ai intro\nTry /courses');
+            return;
+        }
+        const courseId = args[0];
+        const modId = args[1];
+        const course = COURSES[courseId];
+        if (!course) {
+            await ctx.reply('Course not found. Try /courses');
+            return;
+        }
+        // Show course overview
+        if (!modId) {
+            const done = uid ? await getDone(uid, courseId) : [];
+            const list = course.mods.map((m, i) => `${i + 1}. ${m}${done.includes(m) ? ' ✅' : ''}\n   /learn ${courseId} ${m}`).join('\n\n');
+            await ctx.reply(`📚 <b>${course.title}</b>\n\n${list}`, { parse_mode: 'HTML' });
+            return;
+        }
+        // Show lesson
+        const key = `${courseId}/${modId}`;
+        const lesson = LESSONS[key] || '📖 Module coming soon!';
+        await ctx.reply(lesson, { parse_mode: 'HTML' });
+        // Mark done
+        if (uid)
+            await markDone(uid, courseId, modId);
+    });
+    bot.command('jobs', async (ctx) => {
+        const jobs = [
+            { t: 'AI/ML Engineer', c: 'Ethiopian AI Institute', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+            { t: 'Full Stack Developer', c: 'Safaricom Ethiopia', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+            { t: 'Python Developer', c: 'Multiple Companies', l: 'Remote / Addis Ababa', u: 'https://dereja.com' },
+            { t: 'Data Scientist', c: 'Commercial Bank of Ethiopia', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+            { t: 'Freelance AI Trainer', c: 'Upwork / Fiverr', l: 'Remote', u: 'https://www.upwork.com' },
+            { t: 'React Native Developer', c: 'Gebeya Inc.', l: 'Addis Ababa', u: 'https://dereja.com' },
+            { t: 'Cloud Engineer (AWS)', c: 'Raxio Data Centre', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+            { t: 'IT Support Specialist', c: 'Dashen Bank', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+            { t: 'Mobile App Developer', c: 'Ethio Telecom', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+            { t: 'Blockchain Developer', c: 'Input Output (IOHK)', l: 'Addis Ababa / Remote', u: 'https://www.ethiojobs.net' },
+            { t: 'DevOps Engineer', c: 'Kifiya Financial', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
+            { t: 'UX/UI Designer', c: 'Zemen Bank', l: 'Addis Ababa', u: 'https://dereja.com' },
+        ];
+        const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' +
+            jobs.map(j => `<b>${j.t}</b>\n🏢 ${j.c}\n📍 ${j.l}\n🔗 ${j.u}`).join('\n\n') +
+            '\n\n<i>Curated weekly from ethiojobs.net & dereja.com</i>';
+        await ctx.reply(msg, { parse_mode: 'HTML' });
+    });
+    bot.command('memory', async (ctx) => {
+        const uid = ctx.from?.id;
+        if (!uid) {
+            await ctx.reply('Cannot identify user.');
+            return;
+        }
+        const total = await countMsgs(uid);
+        if (!total) {
+            await ctx.reply('📝 No messages yet. Send me something!');
+            return;
+        }
+        const recent = await getRecent(uid, 4);
+        let m = `📝 <b>Your Memory</b> (${total} messages)\n\n`;
+        for (const r of recent)
+            m += `${r.role === 'user' ? '👤' : '🤖'} ${r.content.slice(0, 100)}\n`;
+        await ctx.reply(m, { parse_mode: 'HTML' });
+    });
+    bot.command('progress', async (ctx) => {
+        const uid = ctx.from?.id;
+        if (!uid) {
+            await ctx.reply('Cannot identify user.');
+            return;
+        }
+        const msgs = await countMsgs(uid);
+        const courses = await getCourseStats(uid);
+        let m = `📊 <b>Your Progress</b>\n\n💬 Messages: ${msgs}\n\n`;
+        if (courses.length) {
+            m += '<b>Courses:</b>\n';
+            for (const c of courses)
+                m += `📚 ${c.course}: ${c.done}/${c.total} modules\n`;
+        }
+        else {
+            m += '📚 No courses started. Try /learn ai intro!';
+        }
+        await ctx.reply(m, { parse_mode: 'HTML' });
+    });
+    bot.on('voice', async (ctx) => {
+        if (!transcriber) {
+            await ctx.reply('🎤 Voice not available.');
+            return;
+        }
+        const uid = ctx.from?.id;
+        await ctx.reply('🎤 Transcribing...');
+        try {
+            const url = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
+            const { text, language } = await transcriber.transcribe(url.href);
+            console.log('🎤 Voice:', language, '-', text.slice(0, 80));
+            await ctx.reply('📝 ' + (language === 'am' ? 'የተፃፈ' : 'Transcribed') + ': "' + text + '"\n\n🤖 Thinking...');
+            if (uid) {
+                await saveMsg(uid, 'user', '🎤 ' + text);
+                // Index voice message
+                (0, embeddings_1.indexUserMessage)(supabase, uid, 'user', text).catch(() => { });
+            }
+            await ctx.sendChatAction('typing');
+            const reply = await aiReply(text, uid);
+            if (uid) {
+                await saveMsg(uid, 'assistant', reply);
+                (0, embeddings_1.indexUserMessage)(supabase, uid, 'assistant', reply).catch(() => { });
+            }
+            await ctx.reply(reply);
+        }
+        catch (e) {
+            console.error('Voice error:', e.message);
+            await ctx.reply('❌ Could not transcribe. Try again.');
+        }
+    });
+    bot.on('text', async (ctx) => {
+        const msg = ctx.message.text;
+        if (msg.startsWith('/'))
+            return;
+        const uid = ctx.from?.id;
+        console.log('📩', ctx.from?.first_name, ':', msg.slice(0, 60));
         if (uid) {
-            await saveMsg(uid, 'user', '🎤 ' + text);
-            // Index voice message
-            (0, embeddings_1.indexUserMessage)(supabase, uid, 'user', text).catch(() => { });
+            await saveProfile(uid, ctx.from?.first_name || '', ctx.from?.username);
+            await saveMsg(uid, 'user', msg);
+            // Index message for semantic search
+            (0, embeddings_1.indexUserMessage)(supabase, uid, 'user', msg).catch(() => { });
         }
         await ctx.sendChatAction('typing');
-        const reply = await aiReply(text, uid);
-        if (uid) {
-            await saveMsg(uid, 'assistant', reply);
-            (0, embeddings_1.indexUserMessage)(supabase, uid, 'assistant', reply).catch(() => { });
+        try {
+            const reply = await aiReply(msg, uid);
+            if (uid) {
+                await saveMsg(uid, 'assistant', reply);
+                // Index AI response for future context
+                (0, embeddings_1.indexUserMessage)(supabase, uid, 'assistant', reply).catch(() => { });
+            }
+            await ctx.reply(reply);
         }
-        await ctx.reply(reply);
-    }
-    catch (e) {
-        console.error('Voice error:', e.message);
-        await ctx.reply('❌ Could not transcribe. Try again.');
-    }
-});
-bot.on('text', async (ctx) => {
-    const msg = ctx.message.text;
-    if (msg.startsWith('/'))
-        return;
-    const uid = ctx.from?.id;
-    console.log('📩', ctx.from?.first_name, ':', msg.slice(0, 60));
-    if (uid) {
-        await saveProfile(uid, ctx.from?.first_name || '', ctx.from?.username);
-        await saveMsg(uid, 'user', msg);
-        // Index message for semantic search
-        (0, embeddings_1.indexUserMessage)(supabase, uid, 'user', msg).catch(() => { });
-    }
-    await ctx.sendChatAction('typing');
-    try {
-        const reply = await aiReply(msg, uid);
-        if (uid) {
-            await saveMsg(uid, 'assistant', reply);
-            // Index AI response for future context
-            (0, embeddings_1.indexUserMessage)(supabase, uid, 'assistant', reply).catch(() => { });
+        catch {
+            await ctx.reply('Error.');
         }
-        await ctx.reply(reply);
+    });
+    // ============================================
+    // Voice Handler
+    // ============================================
+    class VoiceTranscriber {
+        async transcribe(fileUrl) {
+            const r = await fetch(fileUrl);
+            const buf = Buffer.from(await r.arrayBuffer());
+            const b64 = buf.toString('base64');
+            const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const res = await m.generateContent([
+                { text: 'Transcribe this audio. Output only the text. If Amharic, use Ge\'ez script.' },
+                { inlineData: { mimeType: 'audio/ogg', data: b64 } },
+            ]);
+            const text = res.response.text().trim();
+            return { text, language: /[\u1200-\u137F]/.test(text) ? 'am' : 'en' };
+        }
     }
-    catch {
-        await ctx.reply('Error.');
+    if (process.env.GEMINI_API_KEY) {
+        transcriber = new VoiceTranscriber();
+        console.log('🎤 Voice enabled');
     }
-});
-// ============================================
-// Voice Handler
-// ============================================
-class VoiceTranscriber {
-    async transcribe(fileUrl) {
-        const r = await fetch(fileUrl);
-        const buf = Buffer.from(await r.arrayBuffer());
-        const b64 = buf.toString('base64');
-        const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        const res = await m.generateContent([
-            { text: 'Transcribe this audio. Output only the text. If Amharic, use Ge\'ez script.' },
-            { inlineData: { mimeType: 'audio/ogg', data: b64 } },
-        ]);
-        const text = res.response.text().trim();
-        return { text, language: /[\u1200-\u137F]/.test(text) ? 'am' : 'en' };
-    }
+    // ============================================
+    // Start
+    // ============================================
+    const port = parseInt(process.env.PORT || '10000');
+    (0, http_1.createServer)((req, res) => {
+        if (req.url === '/health') {
+            res.writeHead(200).end('OK');
+            return;
+        }
+        res.writeHead(200).end('GETEDIL-OS-BOT');
+    }).listen(port, () => console.log('🏥 Health :' + port));
+    console.log('🤖 Starting polling mode...');
+    bot.launch({
+        dropPendingUpdates: true,
+        allowedUpdates: ['message', 'callback_query']
+    }).then(() => {
+        console.log('✅ Polling connected');
+    }).catch(() => {
+        console.log('⚠️ Polling error, retrying in 5s...');
+        setTimeout(() => bot.launch({ dropPendingUpdates: true }), 5000);
+    });
+    console.log('✅ Bot polling for messages...');
+    process.once('SIGINT', () => bot.stop('SIGINT'));
+    process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }
-if (process.env.GEMINI_API_KEY) {
-    transcriber = new VoiceTranscriber();
-    console.log('🎤 Voice enabled');
-}
-// ============================================
-// Start
-// ============================================
-const port = parseInt(process.env.PORT || '10000');
-(0, http_1.createServer)((req, res) => {
-    if (req.url === '/health') {
-        res.writeHead(200).end('OK');
-        return;
-    }
-    res.writeHead(200).end('GETEDIL-OS-BOT');
-}).listen(port, () => console.log('🏥 Health :' + port));
-console.log('🤖 Starting polling mode...');
-bot.launch({
-    dropPendingUpdates: true,
-    allowedUpdates: ['message', 'callback_query']
-}).then(() => {
-    console.log('✅ Polling connected');
-}).catch(() => {
-    console.log('⚠️ Polling error, retrying in 5s...');
-    setTimeout(() => bot.launch({ dropPendingUpdates: true }), 5000);
-});
-console.log('✅ Bot polling for messages...');
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
 //# sourceMappingURL=app.js.map

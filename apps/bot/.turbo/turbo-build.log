@@ -2,3 +2,11 @@
 > @getedil/bot@0.1.0 build
 > tsc
 
+src/app.ts(338,1): error TS1005: '}' expected.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path C:\Users\Geust\Desktop\getedil-os-bot\apps\bot
+npm error workspace @getedil/bot@0.1.0
+npm error location C:\Users\Geust\Desktop\getedil-os-bot\apps\bot
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c tsc

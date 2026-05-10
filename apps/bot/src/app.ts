@@ -8,6 +8,23 @@ const WebSocket = require('ws');
 // AI clients
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
+// Fine-tuned Amharic model (Hugging Face)
+async function hfAmharicReply(msg: string): Promise<string | null> {
+  if (!process.env.HF_API_KEY) return null;
+  try {
+    const r = await fetch('https://api-inference.huggingface.co/models/EthioFX/getedil-amharic-v1', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.HF_API_KEY}` },
+      body: JSON.stringify({ 
+        inputs: `<|system|>You are Gete (ጌጤ), an AI tutor for Get'Edil (ጌት፟እድል). Speak natural Amharic.</s><|user|>${msg}</s><|assistant|>`,
+        parameters: { max_new_tokens: 300, temperature: 0.7 }
+      }),
+    });
+    const d: any = await r.json();
+    if (d.error) { console.log('HF error:', d.error); return null; }
+    return d[0]?.generated_text?.split('<|assistant|>').pop()?.trim() || null;
+  } catch { return null; }
+}
 let transcriber: VoiceTranscriber | null = null;
 
 console.log('\nGETEDIL-OS-BOT\n');
@@ -92,9 +109,15 @@ async function aiReply(msg: string, telegramId?: number): Promise<string> {
       }
     } catch {}
   }
-  if (/[\u1200-\u137F]/.test(msg) && process.env.GEMINI_API_KEY) {
-    try {
-      const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    if (/[\u1200-\u137F]/.test(msg)) {
+    // Try fine-tuned model first
+    const hfReply = await hfAmharicReply(msg);
+    if (hfReply) return hfReply;
+    
+    // Fallback to Gemini
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `${context}You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). Speak natural Amharic.\n\nStudent: ${msg}` }] }] });
       return r.response.text();
     } catch {}
