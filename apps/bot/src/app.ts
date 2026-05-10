@@ -108,8 +108,7 @@ async function aiReply(msg: string, telegramId?: number): Promise<string> {
         if (profile) context += 'About user: ' + profile + '\n\n';
       }
     } catch {}
-  }
-    if (/[\u1200-\u137F]/.test(msg)) {
+  }  if (/[\u1200-\u137F]/.test(msg)) {
     // Try fine-tuned model first
     const hfReply = await hfAmharicReply(msg);
     if (hfReply) return hfReply;
@@ -118,15 +117,17 @@ async function aiReply(msg: string, telegramId?: number): Promise<string> {
     if (process.env.GEMINI_API_KEY) {
       try {
         const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `${context}You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). Speak natural Amharic.\n\nStudent: ${msg}` }] }] });
-      return r.response.text();
-    } catch {}
+        const r = await m.generateContent({ contents: [{ role: 'user', parts: [{ text: `${context}You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). Speak natural Amharic.\n\nStudent: ${msg}` }] }] });
+        return r.response.text();
+      } catch {}
+    }
   }
   try {
     const r = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: `You are Gete (ጌጤ), the AI tutor for Get'Edil (ጌት፟እድል). ${context}` }, { role: 'user', content: msg }], max_tokens: 600 });
     return r.choices[0]?.message?.content || 'Error.';
   } catch { return 'AI unavailable.'; }
 }
+
 // ============================================
 // Bot
 // ============================================
