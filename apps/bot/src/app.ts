@@ -232,6 +232,135 @@ bot.command('progress', async (ctx) => {
     m += '📚 No courses started. Try /learn ai intro!';
   }
   await ctx.reply(m, { parse_mode: 'HTML' });
+// ============================================
+// Group & Channel Automation Suite
+// ============================================
+
+// Track active users for stats
+const activeUsers = new Set<number>();
+
+// Auto-welcome new group members
+bot.on('new_chat_members', async (ctx) => {
+  const newMembers = ctx.message['new_chat_members'] || [];
+  for (const member of newMembers) {
+    if (member.is_bot) return;
+    const name = member.first_name || 'Friend';
+    await ctx.reply(
+      `👋 እንኳን ደህና መጣህ ${name}! Welcome to <b>Get'Edil Community</b>! 🇪🇹\n\n` +
+      `I'm <b>Gete</b> (ጌጤ), your AI tutor.\n\n` +
+      `📚 /courses — Learn AI Engineering\n` +
+      `💼 /jobs — Ethiopian tech jobs\n` +
+      `🎤 Send a voice note — I'll respond\n` +
+      `💬 Just type your question\n\n` +
+      `🔗 Updates: @GetEdilOfficial`,
+      { parse_mode: 'HTML' }
+    );
+  }
+});
+
+// Announce when bot is added to a new group
+bot.on('my_chat_member', async (ctx) => {
+  const update = ctx.update['my_chat_member'];
+  if (update?.new_chat_member?.status === 'administrator') {
+    await ctx.reply(
+      `👋 <b>Get'Edil is here!</b> 🇪🇹\n\n` +
+      `I'm your AI tutor and community manager.\n\n` +
+      `📚 /courses — Learn AI\n` +
+      `💼 /jobs — Tech jobs\n` +
+      `💬 Ask me anything\n\n` +
+      `Happy learning! 🚀`,
+      { parse_mode: 'HTML' }
+    );
+  }
+});
+
+// Track active users
+bot.use(async (ctx, next) => {
+  const uid = ctx.from?.id;
+  if (uid) activeUsers.add(uid);
+  await next();
+});
+
+// Anti-spam filter
+const SPAM_PATTERNS = [
+  /t\.me\/joinchat/i, /bit\.ly/i, /tinyurl/i,
+  /click here/i, /earn.*money/i, /make.*money/i,
+  /crypto.*invest/i, /forex/i, /casino/i, /betting/i,
+];
+
+bot.use(async (ctx, next) => {
+  if (ctx.message && 'text' in ctx.message) {
+    const text = ctx.message.text;
+    const isSpam = SPAM_PATTERNS.some(p => p.test(text));
+    if (isSpam) {
+      try {
+        await ctx.deleteMessage();
+        const warning = await ctx.reply(`⚠️ @${ctx.from?.username || ctx.from?.first_name} spam not allowed.`);
+        setTimeout(async () => { try { await ctx.deleteMessage(warning.message_id); } catch {} }, 5000);
+      } catch {}
+      return;
+    }
+  }
+  await next();
+});
+
+// ============================================
+// Scheduled Posts
+// ============================================
+
+async function postWeeklyJobs() {
+  const jobs = [
+    { t: 'AI/ML Engineer', c: 'Ethiopian AI Institute', l: 'Addis Ababa' },
+    { t: 'Full Stack Developer', c: 'Safaricom Ethiopia', l: 'Addis Ababa' },
+    { t: 'Python Developer', c: 'Multiple Companies', l: 'Remote / Addis Ababa' },
+    { t: 'Data Scientist', c: 'Commercial Bank of Ethiopia', l: 'Addis Ababa' },
+    { t: 'Freelance AI Trainer', c: 'Upwork / Fiverr', l: 'Remote' },
+    { t: 'Cloud Engineer', c: 'Raxio Data Centre', l: 'Addis Ababa' },
+    { t: 'React Native Developer', c: 'Gebeya Inc.', l: 'Addis Ababa' },
+  ];
+  const msg = `📊 <b>Weekly Ethiopian Tech Jobs</b>\n📅 ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\n` +
+    jobs.map(j => `🔥 <b>${j.t}</b>\n🏢 ${j.c}\n📍 ${j.l}\n\n`).join('') +
+    `💡 Start learning: @GETEDILOSBOT\n👥 Join: @GetEdilCommunity`;
+  try { await bot.telegram.sendMessage('@GetEdilOfficial', msg, { parse_mode: 'HTML' }); console.log('📊 Jobs posted'); } catch {}
+}
+
+async function postDailyTip() {
+  const tips = [
+    '💡 Write prompts with 4 elements: Role, Context, Task, Format.',
+    '💡 Practice coding 30 minutes daily. Consistency beats intensity.',
+    '💡 Build a portfolio project. Employers care about what you build.',
+    '💡 Use Git. Every professional developer uses version control.',
+    '💡 Read error messages carefully. They tell you what\'s wrong.',
+    '💡 Join Ethiopian tech communities. Networking opens doors.',
+    '💡 Start freelancing early. Small projects build reputation.',
+  ];
+  const tip = tips[new Date().getDay() % tips.length]!;
+  try { await bot.telegram.sendMessage('@GetEdilOfficial', tip, { parse_mode: 'HTML' }); } catch {}
+}
+
+// Schedule: Monday jobs + daily tips at 9 AM EAT (6 AM UTC)
+setInterval(() => {
+  const now = new Date();
+  if (now.getUTCHours() === 6 && now.getUTCMinutes() === 0) {
+    if (now.getUTCDay() === 1) postWeeklyJobs();
+    postDailyTip();
+  }
+}, 60000);
+
+// Post once on startup
+setTimeout(() => { postWeeklyJobs(); postDailyTip(); }, 15000);
+
+// Stats command
+bot.command('stats', async (ctx) => {
+  try {
+    const memberCount = await ctx.getChatMemberCount();
+    await ctx.reply(
+      `📊 <b>Community Stats</b>\n\n👥 Members: ${memberCount}\n📅 Active today: ${activeUsers.size} users`,
+      { parse_mode: 'HTML' }
+    );
+  } catch { await ctx.reply('Stats not available.'); }
+});
+
 });
 bot.on('voice', async (ctx) => {
   if (!transcriber) { await ctx.reply('🎤 Voice not available.'); return; }
