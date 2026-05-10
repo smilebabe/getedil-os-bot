@@ -5,10 +5,10 @@ import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
 import { searchContext, seedContentEmbeddings, indexUserMessage, getUserProfileContext } from './embeddings';
 const WebSocket = require('ws');
-// AI clients
+
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
-// Fine-tuned Amharic model (Hugging Face)
+
 async function hfAmharicReply(msg: string): Promise<string | null> {
   if (!process.env.HF_API_KEY) return null;
   try {
@@ -25,23 +25,20 @@ async function hfAmharicReply(msg: string): Promise<string | null> {
     return d[0]?.generated_text?.split('<|assistant|>').pop()?.trim() || null;
   } catch { return null; }
 }
+
 let transcriber: VoiceTranscriber | null = null;
+const activeUsers = new Set<number>();
 
 console.log('\nGETEDIL-OS-BOT\n');
 
-// ============================================
-// Supabase (safe init)
-// ============================================
 let supabase: any = null;
 try {
   const url = process.env.SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   if (url && key) {
-    supabase = createClient(url, key, { realtime: { transport: WebSocket },
-      auth: { persistSession: false },
-    });
+    supabase = createClient(url, key, { realtime: { transport: WebSocket }, auth: { persistSession: false } });
     console.log('📦 Supabase connected');
-seedContentEmbeddings(supabase).catch(() => {});
+    seedContentEmbeddings(supabase).catch(() => {});
   } else {
     console.log('⚠️ Supabase URL or key missing');
   }
@@ -50,38 +47,28 @@ seedContentEmbeddings(supabase).catch(() => {});
   console.log('⚠️ Supabase init failed:', e.message);
 }
 
-// Safe DB helpers - never crash on error
 async function saveMsg(uid: number, role: string, text: string) {
   try { await supabase.from('conversation_history').insert({ telegram_id: uid, role, content: text.slice(0, 4000) }); } catch {}
 }
-
 async function getRecent(uid: number, n = 6): Promise<Array<{ role: string; content: string }>> {
   try { const { data } = await supabase.from('conversation_history').select('role,content').eq('telegram_id', uid).order('created_at', { ascending: false }).limit(n); return (data || []).reverse(); } catch { return []; }
 }
-
 async function countMsgs(uid: number): Promise<number> {
   try { const { count } = await supabase.from('conversation_history').select('*', { count: 'exact', head: true }).eq('telegram_id', uid); return count || 0; } catch { return 0; }
 }
-
 async function saveProfile(uid: number, name: string, uname?: string) {
   try { await supabase.from('user_profiles').upsert({ telegram_id: uid, first_name: name, username: uname || null, last_active_at: new Date().toISOString() }, { onConflict: 'telegram_id' }); } catch {}
 }
-
 async function markDone(uid: number, course: string, mod: string) {
   try { await supabase.from('course_progress').upsert({ telegram_id: uid, course_id: course, module_id: mod, completed: true, completed_at: new Date().toISOString() }, { onConflict: 'telegram_id, course_id, module_id' }); } catch {}
 }
-
 async function getDone(uid: number, course: string): Promise<string[]> {
   try { const { data } = await supabase.from('course_progress').select('module_id').eq('telegram_id', uid).eq('course_id', course).eq('completed', true); return (data || []).map((r: any) => r.module_id); } catch { return []; }
 }
-
 async function getCourseStats(uid: number): Promise<Array<{ course: string; done: number; total: number }>> {
   try { const { data } = await supabase.from('course_progress').select('course_id,module_id').eq('telegram_id', uid).eq('completed', true); if (!data) return []; const g: Record<string, string[]> = {}; for (const r of data) { if (!g[r.course_id]) g[r.course_id] = []; g[r.course_id]!.push(r.module_id); } return Object.entries(g).map(([c, m]) => ({ course: c, done: m.length, total: COURSES[c]?.mods.length || 0 })); } catch { return []; }
 }
 
-// ============================================
-// Courses
-// ============================================
 const COURSES: Record<string, { title: string; mods: string[] }> = {
   'ai': { title: 'AI Engineering 101', mods: ['intro', 'prompts', 'vectors', 'llm', 'apps'] },
 };
@@ -94,9 +81,6 @@ const LESSONS: Record<string, string> = {
   'ai/apps': '🏗️ <b>Building AI Apps</b>\n\n✅ <b>You\'ve learned:</b>\n• AI fundamentals\n• Prompt engineering\n• Vector databases\n• LLM integration\n\n🎉 <b>Course Complete!</b> 🏆\n\nCheck /progress to see your achievement!',
 };
 
-// ============================================
-// AI
-// ============================================
 async function aiReply(msg: string, telegramId?: number): Promise<string> {
   let context = '';
   if (supabase) {
@@ -108,12 +92,10 @@ async function aiReply(msg: string, telegramId?: number): Promise<string> {
         if (profile) context += 'About user: ' + profile + '\n\n';
       }
     } catch {}
-  }  if (/[\u1200-\u137F]/.test(msg)) {
-    // Try fine-tuned model first
+  }
+  if (/[\u1200-\u137F]/.test(msg)) {
     const hfReply = await hfAmharicReply(msg);
     if (hfReply) return hfReply;
-    
-    // Fallback to Gemini
     if (process.env.GEMINI_API_KEY) {
       try {
         const m = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -128,91 +110,66 @@ async function aiReply(msg: string, telegramId?: number): Promise<string> {
   } catch { return 'AI unavailable.'; }
 }
 
-// ============================================
-// Bot
-// ============================================
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 
+// ==================== COMMANDS ====================
 bot.command('start', async (ctx) => {
   const uid = ctx.from?.id;
   if (uid) await saveProfile(uid, ctx.from?.first_name || 'Student', ctx.from?.username);
   await ctx.reply(
     '👋 Welcome to <b>Get\'Edil</b> (ጌት፟እድል)! 🚀\n\n' +
-    'I\'m your AI tutor for AI engineering. I speak <b>Amharic</b> and <b>English</b>.\n\n' +
-    '<b>What I can do TODAY:</b>\n' +
-    '📚 /courses — Learn AI Engineering (5 modules)\n' +
-    '🎤 Send a voice note — I\'ll transcribe &amp; respond\n' +
-    '💼 /jobs — Ethiopian tech jobs\n' +
-    '📝 /memory — I remember our chats\n' +
-    '📊 /progress — Track your learning\n\n' +
-    '<b>Coming SOON:</b>\n' +
-    '🗣️ Voice responses (I\'ll talk back)\n' +
-    '🎯 Personalized job matching\n' +
-    '💻 More courses\n\n' +
+    'I\'m your AI tutor. I speak <b>Amharic</b> and <b>English</b>.\n\n' +
+    '📚 /courses | 💼 /jobs | 📝 /memory | 📊 /progress\n\n' +
     'Try sending me a message or voice note! 🎤',
     { parse_mode: 'HTML' }
   );
 });
 
-bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /help'); });
+bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /stats /help'); });
 
 bot.command('courses', async (ctx) => {
-  await ctx.reply('📚 <b>Courses</b>\n\n<b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro\n\nStart with /learn ai intro', { parse_mode: 'HTML' });
+  await ctx.reply('📚 <b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro', { parse_mode: 'HTML' });
 });
 
 bot.command('learn', async (ctx) => {
   const args = ctx.message.text.split(' ').slice(1);
   const uid = ctx.from?.id;
-  if (!args.length) { await ctx.reply('Usage: /learn <course> <module>\n\nExample: /learn ai intro\nTry /courses'); return; }
-
+  if (!args.length) { await ctx.reply('Usage: /learn ai intro'); return; }
   const courseId = args[0]!;
   const modId = args[1];
   const course = COURSES[courseId];
-  if (!course) { await ctx.reply('Course not found. Try /courses'); return; }
-
-  // Show course overview
+  if (!course) { await ctx.reply('Course not found. /courses'); return; }
   if (!modId) {
     const done = uid ? await getDone(uid, courseId) : [];
     const list = course.mods.map((m, i) => `${i + 1}. ${m}${done.includes(m) ? ' ✅' : ''}\n   /learn ${courseId} ${m}`).join('\n\n');
     await ctx.reply(`📚 <b>${course.title}</b>\n\n${list}`, { parse_mode: 'HTML' });
     return;
   }
-
-  // Show lesson
   const key = `${courseId}/${modId}`;
   const lesson = LESSONS[key] || '📖 Module coming soon!';
   await ctx.reply(lesson, { parse_mode: 'HTML' });
-
-  // Mark done
   if (uid) await markDone(uid, courseId, modId);
 });
 
 bot.command('jobs', async (ctx) => {
   const jobs = [
-    { t: 'AI/ML Engineer', c: 'Ethiopian AI Institute', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-    { t: 'Full Stack Developer', c: 'Safaricom Ethiopia', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-    { t: 'Python Developer', c: 'Multiple Companies', l: 'Remote / Addis Ababa', u: 'https://dereja.com' },
-    { t: 'Data Scientist', c: 'Commercial Bank of Ethiopia', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-    { t: 'Freelance AI Trainer', c: 'Upwork / Fiverr', l: 'Remote', u: 'https://www.upwork.com' },
-    { t: 'React Native Developer', c: 'Gebeya Inc.', l: 'Addis Ababa', u: 'https://dereja.com' },
-    { t: 'Cloud Engineer (AWS)', c: 'Raxio Data Centre', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-    { t: 'IT Support Specialist', c: 'Dashen Bank', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-    { t: 'Mobile App Developer', c: 'Ethio Telecom', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-    { t: 'Blockchain Developer', c: 'Input Output (IOHK)', l: 'Addis Ababa / Remote', u: 'https://www.ethiojobs.net' },
-    { t: 'DevOps Engineer', c: 'Kifiya Financial', l: 'Addis Ababa', u: 'https://www.ethiojobs.net' },
-    { t: 'UX/UI Designer', c: 'Zemen Bank', l: 'Addis Ababa', u: 'https://dereja.com' },
+    { t: 'AI/ML Engineer', c: 'Ethiopian AI Institute', l: 'Addis Ababa' },
+    { t: 'Full Stack Developer', c: 'Safaricom Ethiopia', l: 'Addis Ababa' },
+    { t: 'Python Developer', c: 'Multiple Companies', l: 'Remote / Addis Ababa' },
+    { t: 'Data Scientist', c: 'Commercial Bank of Ethiopia', l: 'Addis Ababa' },
+    { t: 'Freelance AI Trainer', c: 'Upwork / Fiverr', l: 'Remote' },
+    { t: 'Cloud Engineer', c: 'Raxio Data Centre', l: 'Addis Ababa' },
+    { t: 'React Native Developer', c: 'Gebeya Inc.', l: 'Addis Ababa' },
   ];
-  
-  const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' + 
-    jobs.map(j => `<b>${j.t}</b>\n🏢 ${j.c}\n📍 ${j.l}\n🔗 ${j.u}`).join('\n\n') +
-    '\n\n<i>Curated weekly from ethiojobs.net & dereja.com</i>';
+  const msg = '💼 <b>Ethiopian Tech Jobs</b>\n\n' + jobs.map(j => `<b>${j.t}</b>\n🏢 ${j.c}\n📍 ${j.l}`).join('\n\n');
   await ctx.reply(msg, { parse_mode: 'HTML' });
 });
+
 bot.command('memory', async (ctx) => {
   const uid = ctx.from?.id;
   if (!uid) { await ctx.reply('Cannot identify user.'); return; }
   const total = await countMsgs(uid);
-  if (!total) { await ctx.reply('📝 No messages yet. Send me something!'); return; }
+  if (!total) { await ctx.reply('📝 No messages yet.'); return; }
   const recent = await getRecent(uid, 4);
   let m = `📝 <b>Your Memory</b> (${total} messages)\n\n`;
   for (const r of recent) m += `${r.role === 'user' ? '👤' : '🤖'} ${r.content.slice(0, 100)}\n`;
@@ -228,18 +185,11 @@ bot.command('progress', async (ctx) => {
   if (courses.length) {
     m += '<b>Courses:</b>\n';
     for (const c of courses) m += `📚 ${c.course}: ${c.done}/${c.total} modules\n`;
-  } else {
-    m += '📚 No courses started. Try /learn ai intro!';
-  }
+  } else { m += '📚 No courses started. Try /learn ai intro!'; }
   await ctx.reply(m, { parse_mode: 'HTML' });
-// ============================================
-// Group & Channel Automation Suite
-// ============================================
+});
 
-// Track active users for stats
-const activeUsers = new Set<number>();
-
-// Auto-welcome new group members
+// ==================== AUTOMATION SUITE ====================
 bot.on('new_chat_members', async (ctx) => {
   const newMembers = ctx.message['new_chat_members'] || [];
   for (const member of newMembers) {
@@ -248,65 +198,44 @@ bot.on('new_chat_members', async (ctx) => {
     await ctx.reply(
       `👋 እንኳን ደህና መጣህ ${name}! Welcome to <b>Get'Edil Community</b>! 🇪🇹\n\n` +
       `I'm <b>Gete</b> (ጌጤ), your AI tutor.\n\n` +
-      `📚 /courses — Learn AI Engineering\n` +
-      `💼 /jobs — Ethiopian tech jobs\n` +
-      `🎤 Send a voice note — I'll respond\n` +
-      `💬 Just type your question\n\n` +
+      `📚 /courses | 💼 /jobs | 💬 Ask me anything\n\n` +
       `🔗 Updates: @GetEdilOfficial`,
       { parse_mode: 'HTML' }
     );
   }
 });
 
-// Announce when bot is added to a new group
 bot.on('my_chat_member', async (ctx) => {
   const update = ctx.update['my_chat_member'];
   if (update?.new_chat_member?.status === 'administrator') {
     await ctx.reply(
       `👋 <b>Get'Edil is here!</b> 🇪🇹\n\n` +
       `I'm your AI tutor and community manager.\n\n` +
-      `📚 /courses — Learn AI\n` +
-      `💼 /jobs — Tech jobs\n` +
-      `💬 Ask me anything\n\n` +
+      `📚 /courses | 💼 /jobs | 💬 Ask me anything\n\n` +
       `Happy learning! 🚀`,
       { parse_mode: 'HTML' }
     );
   }
 });
 
-// Track active users
 bot.use(async (ctx, next) => {
   const uid = ctx.from?.id;
   if (uid) activeUsers.add(uid);
   await next();
 });
 
-// Anti-spam filter
-const SPAM_PATTERNS = [
-  /t\.me\/joinchat/i, /bit\.ly/i, /tinyurl/i,
-  /click here/i, /earn.*money/i, /make.*money/i,
-  /crypto.*invest/i, /forex/i, /casino/i, /betting/i,
-];
+const SPAM_PATTERNS = [/t\.me\/joinchat/i, /bit\.ly/i, /tinyurl/i, /click here/i, /earn.*money/i, /make.*money/i, /crypto.*invest/i, /forex/i, /casino/i, /betting/i];
 
 bot.use(async (ctx, next) => {
   if (ctx.message && 'text' in ctx.message) {
     const text = ctx.message.text;
-    const isSpam = SPAM_PATTERNS.some(p => p.test(text));
-    if (isSpam) {
-      try {
-        await ctx.deleteMessage();
-        const warning = await ctx.reply(`⚠️ @${ctx.from?.username || ctx.from?.first_name} spam not allowed.`);
-        setTimeout(async () => { try { await ctx.deleteMessage(warning.message_id); } catch {} }, 5000);
-      } catch {}
+    if (SPAM_PATTERNS.some(p => p.test(text))) {
+      try { await ctx.deleteMessage(); } catch {}
       return;
     }
   }
   await next();
 });
-
-// ============================================
-// Scheduled Posts
-// ============================================
 
 async function postWeeklyJobs() {
   const jobs = [
@@ -315,30 +244,19 @@ async function postWeeklyJobs() {
     { t: 'Python Developer', c: 'Multiple Companies', l: 'Remote / Addis Ababa' },
     { t: 'Data Scientist', c: 'Commercial Bank of Ethiopia', l: 'Addis Ababa' },
     { t: 'Freelance AI Trainer', c: 'Upwork / Fiverr', l: 'Remote' },
-    { t: 'Cloud Engineer', c: 'Raxio Data Centre', l: 'Addis Ababa' },
-    { t: 'React Native Developer', c: 'Gebeya Inc.', l: 'Addis Ababa' },
   ];
   const msg = `📊 <b>Weekly Ethiopian Tech Jobs</b>\n📅 ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\n` +
     jobs.map(j => `🔥 <b>${j.t}</b>\n🏢 ${j.c}\n📍 ${j.l}\n\n`).join('') +
     `💡 Start learning: @GETEDILOSBOT\n👥 Join: @GetEdilCommunity`;
-  try { await bot.telegram.sendMessage('@GetEdilOfficial', msg, { parse_mode: 'HTML' }); console.log('📊 Jobs posted'); } catch {}
+  try { await bot.telegram.sendMessage('@GetEdilOfficial', msg, { parse_mode: 'HTML' }); } catch {}
 }
 
 async function postDailyTip() {
-  const tips = [
-    '💡 Write prompts with 4 elements: Role, Context, Task, Format.',
-    '💡 Practice coding 30 minutes daily. Consistency beats intensity.',
-    '💡 Build a portfolio project. Employers care about what you build.',
-    '💡 Use Git. Every professional developer uses version control.',
-    '💡 Read error messages carefully. They tell you what\'s wrong.',
-    '💡 Join Ethiopian tech communities. Networking opens doors.',
-    '💡 Start freelancing early. Small projects build reputation.',
-  ];
+  const tips = ['💡 Write prompts with 4 elements: Role, Context, Task, Format.','💡 Practice coding 30 minutes daily.','💡 Build a portfolio project.','💡 Use Git for version control.','💡 Read error messages carefully.','💡 Join Ethiopian tech communities.','💡 Start freelancing early.'];
   const tip = tips[new Date().getDay() % tips.length]!;
   try { await bot.telegram.sendMessage('@GetEdilOfficial', tip, { parse_mode: 'HTML' }); } catch {}
 }
 
-// Schedule: Monday jobs + daily tips at 9 AM EAT (6 AM UTC)
 setInterval(() => {
   const now = new Date();
   if (now.getUTCHours() === 6 && now.getUTCMinutes() === 0) {
@@ -347,21 +265,17 @@ setInterval(() => {
   }
 }, 60000);
 
-// Post once on startup
 setTimeout(() => { postWeeklyJobs(); postDailyTip(); }, 15000);
 
-// Stats command
-bot.command('stats', async (ctx) => {
+// Stats command (works with or without bot tag)
+bot.hears(/^\/stats(@GETEDILOSBOT)?/, async (ctx) => {
   try {
-    const memberCount = await ctx.getChatMemberCount();
-    await ctx.reply(
-      `📊 <b>Community Stats</b>\n\n👥 Members: ${memberCount}\n📅 Active today: ${activeUsers.size} users`,
-      { parse_mode: 'HTML' }
-    );
+    const memberCount = await ctx.getChatMembersCount();
+    await ctx.reply(`📊 <b>Community Stats</b>\n\n👥 Members: ${memberCount}\n📅 Active today: ${activeUsers.size} users`, { parse_mode: 'HTML' });
   } catch { await ctx.reply('Stats not available.'); }
 });
 
-});
+// ==================== VOICE & TEXT ====================
 bot.on('voice', async (ctx) => {
   if (!transcriber) { await ctx.reply('🎤 Voice not available.'); return; }
   const uid = ctx.from?.id;
@@ -371,26 +285,12 @@ bot.on('voice', async (ctx) => {
     const { text, language } = await transcriber.transcribe(url.href);
     console.log('🎤 Voice:', language, '-', text.slice(0, 80));
     await ctx.reply('📝 ' + (language === 'am' ? 'የተፃፈ' : 'Transcribed') + ': "' + text + '"\n\n🤖 Thinking...');
-    
-    if (uid) {
-      await saveMsg(uid, 'user', '🎤 ' + text);
-      // Index voice message
-      indexUserMessage(supabase, uid, 'user', text).catch(() => {});
-    }
-    
+    if (uid) { await saveMsg(uid, 'user', '🎤 ' + text); indexUserMessage(supabase, uid, 'user', text).catch(() => {}); }
     await ctx.sendChatAction('typing');
     const reply = await aiReply(text, uid);
-    
-    if (uid) {
-      await saveMsg(uid, 'assistant', reply);
-      indexUserMessage(supabase, uid, 'assistant', reply).catch(() => {});
-    }
-    
+    if (uid) { await saveMsg(uid, 'assistant', reply); indexUserMessage(supabase, uid, 'assistant', reply).catch(() => {}); }
     await ctx.reply(reply);
-  } catch(e: any) {
-    console.error('Voice error:', e.message);
-    await ctx.reply('❌ Could not transcribe. Try again.');
-  }
+  } catch(e: any) { console.error('Voice error:', e.message); await ctx.reply('❌ Could not transcribe.'); }
 });
 
 bot.on('text', async (ctx) => {
@@ -398,30 +298,16 @@ bot.on('text', async (ctx) => {
   if (msg.startsWith('/')) return;
   const uid = ctx.from?.id;
   console.log('📩', ctx.from?.first_name, ':', msg.slice(0, 60));
-  
-  if (uid) {
-    await saveProfile(uid, ctx.from?.first_name || '', ctx.from?.username);
-    await saveMsg(uid, 'user', msg);
-    // Index message for semantic search
-    indexUserMessage(supabase, uid, 'user', msg).catch(() => {});
-  }
-  
+  if (uid) { await saveProfile(uid, ctx.from?.first_name || '', ctx.from?.username); await saveMsg(uid, 'user', msg); indexUserMessage(supabase, uid, 'user', msg).catch(() => {}); }
   await ctx.sendChatAction('typing');
-  
   try {
     const reply = await aiReply(msg, uid);
-    if (uid) {
-      await saveMsg(uid, 'assistant', reply);
-      // Index AI response for future context
-      indexUserMessage(supabase, uid, 'assistant', reply).catch(() => {});
-    }
+    if (uid) { await saveMsg(uid, 'assistant', reply); indexUserMessage(supabase, uid, 'assistant', reply).catch(() => {}); }
     await ctx.reply(reply);
   } catch { await ctx.reply('Error.'); }
 });
 
-// ============================================
-// Voice Handler
-// ============================================
+// ==================== VOICE TRANSCRIBER ====================
 class VoiceTranscriber {
   async transcribe(fileUrl: string): Promise<{ text: string; language: string }> {
     const r = await fetch(fileUrl);
@@ -437,14 +323,9 @@ class VoiceTranscriber {
   }
 }
 
-if (process.env.GEMINI_API_KEY) {
-  transcriber = new VoiceTranscriber();
-  console.log('🎤 Voice enabled');
-}
+if (process.env.GEMINI_API_KEY) { transcriber = new VoiceTranscriber(); console.log('🎤 Voice enabled'); }
 
-// ============================================
-// Start
-// ============================================
+// ==================== START ====================
 const port = parseInt(process.env.PORT || '10000');
 createServer((req, res) => {
   if (req.url === '/health') { res.writeHead(200).end('OK'); return; }
@@ -452,16 +333,12 @@ createServer((req, res) => {
 }).listen(port, () => console.log('🏥 Health :' + port));
 
 console.log('🤖 Starting polling mode...');
-bot.launch({ 
-  dropPendingUpdates: true,
-  allowedUpdates: ['message', 'callback_query']
-}).then(() => {
+bot.launch({ dropPendingUpdates: true, allowedUpdates: ['message', 'callback_query'] }).then(() => {
   console.log('✅ Polling connected');
 }).catch(() => {
   console.log('⚠️ Polling error, retrying in 5s...');
   setTimeout(() => bot.launch({ dropPendingUpdates: true }), 5000);
 });
-console.log('✅ Bot polling for messages...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
