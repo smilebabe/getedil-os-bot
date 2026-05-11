@@ -124,7 +124,69 @@ bot.command('start', async (ctx) => {
     { parse_mode: 'HTML' }
   );
 });
+bot.command('pay', async (ctx) => {
+  const uid = ctx.from?.id;
+  if (!uid) { await ctx.reply('Cannot identify user.'); return; }
 
+  await ctx.reply('💳 Generating your payment link...');
+
+  try {
+    const response = await fetch(
+  `https://txhcnsxzcbkoroyasmlc.supabase.co/functions/v1/super-service`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
+    },
+    body: JSON.stringify({
+      amount: 100,
+      email: `${uid}@getedil.user`,
+      first_name: ctx.from?.first_name || 'Student',
+      last_name: ctx.from?.last_name || '',
+      tx_ref: `GETEDIL-${Date.now()}-${uid}`,
+      user_id: uid
+    })
+  }
+);
+
+    const data: any = await response.json();
+
+    if (data.status === 'success' && data.data?.checkout_url) {
+      // Save transaction
+      if (supabase) {
+        await supabase.from('transactions').insert({
+          user_id: uid,
+          amount: 100,
+          tx_ref: data.data.tx_ref,
+          status: 'pending',
+          type: 'course_purchase'
+        });
+      }
+
+      await ctx.reply(
+        `💳 <b>Complete Your Payment</b>\n\n` +
+        `💰 Amount: 100 ETB (Test)\n` +
+        `📚 Get'Edil Premium Access\n\n` +
+        `🔗 <b>Pay here:</b>\n${data.data.checkout_url}\n\n` +
+        `<i>Test card: 4242 4242 4242 4242 | Any date | Any CVV</i>`,
+        { parse_mode: 'HTML' }
+      );
+    } else {
+      throw new Error(data.message || 'Payment link failed');
+    }
+  } catch (e: any) {
+    console.error('Payment error:', e.message);
+    await ctx.reply(
+      '💳 <b>Get\'Edil Premium</b>\n\n' +
+      '📚 Full AI Engineering Course\n🏆 NFT Certificate\n💬 Priority Support\n\n' +
+      '💰 <b>500 ETB</b> (one-time)\n\n' +
+      '⚠️ Payment via Chapa (Telebirr/CBE) coming soon.\n' +
+      'For now, all content is <b>FREE</b>! Start: /learn ai intro',
+      { parse_mode: 'HTML' }
+    );
+  }
+});
 bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /stats /help'); });
 
 bot.command('courses', async (ctx) => {
