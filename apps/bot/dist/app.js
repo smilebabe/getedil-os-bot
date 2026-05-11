@@ -185,13 +185,13 @@ bot.command('testpay', async (ctx) => {
         body: JSON.stringify({
             amount: 100,
             currency: 'ETB',
-            email: 'test@test.com',
+            email: 'test@gmail.com',
             first_name: 'Test',
             last_name: 'User',
             tx_ref: txRef,
             return_url: 'https://t.me/GETEDILOSBOT',
             callback_url: 'https://txhcnsxzcbkoroyasmlc.supabase.co/functions/v1/payment-webhook',
-            'customization[title]': 'Get\'Edil Test',
+            'customization[title]': "Get'Edil Test",
             'customization[description]': 'Test Payment',
         }),
     });
@@ -204,52 +204,43 @@ bot.command('pay', async (ctx) => {
         await ctx.reply('Cannot identify user.');
         return;
     }
-    await ctx.reply('💳 Generating your payment link...');
+    const tx_ref = `GETEDIL-${Date.now()}-${uid}`;
+    await ctx.reply('💳 Generating payment link...');
     try {
-        const response = await fetch(`https://txhcnsxzcbkoroyasmlc.supabase.co/functions/v1/super-service`, {
+        const response = await fetch('https://api.chapa.co/v1/transaction/initialize', {
             method: 'POST',
             headers: {
+                'Authorization': `Bearer ${process.env.CHAPA_SECRET_KEY || 'CHASECK_TEST-G89UwLELjEXm0QgS2JdWKNxs2de0BppJ'}`,
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
             },
             body: JSON.stringify({
                 amount: 100,
-                email: `${uid}@getedil.user`,
+                currency: 'ETB',
+                email: `student${uid}@gmail.com`,
                 first_name: ctx.from?.first_name || 'Student',
                 last_name: ctx.from?.last_name || '',
-                tx_ref: `GETEDIL-${Date.now()}-${uid}`,
-                user_id: uid
-            })
+                tx_ref,
+                return_url: 'https://t.me/GETEDILOSBOT',
+                callback_url: 'https://txhcnsxzcbkoroyasmlc.supabase.co/functions/v1/payment-webhook',
+                'customization[title]': "Get'Edil Course",
+                'customization[description]': 'AI Engineering 101',
+            }),
         });
         const data = await response.json();
         if (data.status === 'success' && data.data?.checkout_url) {
-            // Save transaction
             if (supabase) {
                 await supabase.from('transactions').insert({
-                    user_id: uid,
-                    amount: 100,
-                    tx_ref: data.data.tx_ref,
-                    status: 'pending',
-                    type: 'course_purchase'
-                });
+                    user_id: uid, amount: 100, tx_ref, status: 'pending', type: 'course_purchase'
+                }).catch(() => { });
             }
-            await ctx.reply(`💳 <b>Complete Your Payment</b>\n\n` +
-                `💰 Amount: 100 ETB (Test)\n` +
-                `📚 Get'Edil Premium Access\n\n` +
-                `🔗 <b>Pay here:</b>\n${data.data.checkout_url}\n\n` +
-                `<i>Test card: 4242 4242 4242 4242 | Any date | Any CVV</i>`, { parse_mode: 'HTML' });
+            await ctx.reply(`💳 <b>Complete Payment</b>\n\n💰 100 ETB (Test)\n📚 AI Engineering Course\n\n🔗 ${data.data.checkout_url}\n\n<i>Test card: 4242 4242 4242 4242 | Any date | Any CVV</i>`, { parse_mode: 'HTML' });
         }
         else {
-            throw new Error(data.message || 'Payment link failed');
+            await ctx.reply(`💳 <b>Get'Edil Premium</b>\n\n📚 Full Course\n💰 500 ETB\n\n⚠️ Payment coming soon. Content FREE: /learn ai intro\n\n<code>${JSON.stringify(data)}</code>`, { parse_mode: 'HTML' });
         }
     }
     catch (e) {
-        console.error('Payment error:', e.message);
-        await ctx.reply('💳 <b>Get\'Edil Premium</b>\n\n' +
-            '📚 Full AI Engineering Course\n🏆 NFT Certificate\n💬 Priority Support\n\n' +
-            '💰 <b>500 ETB</b> (one-time)\n\n' +
-            '⚠️ Payment via Chapa (Telebirr/CBE) coming soon.\n' +
-            'For now, all content is <b>FREE</b>! Start: /learn ai intro', { parse_mode: 'HTML' });
+        await ctx.reply(`💳 <b>Get'Edil Premium</b>\n\n📚 Full Course\n💰 500 ETB\n\n⚠️ Demo mode. All content FREE: /learn ai intro`, { parse_mode: 'HTML' });
     }
 });
 bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /stats /help'); });
