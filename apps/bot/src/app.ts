@@ -124,6 +124,32 @@ bot.command('start', async (ctx) => {
     { parse_mode: 'HTML' }
   );
 });
+bot.command('testpay', async (ctx) => {
+  const txRef = 'TEST-' + Date.now();
+  
+  const response = await fetch('https://api.chapa.co/v1/transaction/initialize', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.CHAPA_SECRET_KEY || 'CHASECK_TEST-G89UwLELjEXm0QgS2JdWKNxs2de0BppJ'}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount: 100,
+      currency: 'ETB',
+      email: 'test@test.com',
+      first_name: 'Test',
+      last_name: 'User',
+      tx_ref: txRef,
+      return_url: 'https://t.me/GETEDILOSBOT',
+      callback_url: 'https://txhcnsxzcbkoroyasmlc.supabase.co/functions/v1/payment-webhook',
+      'customization[title]': 'Get\'Edil Test',
+      'customization[description]': 'Test Payment',
+    }),
+  });
+
+  const data = await response.json();
+  await ctx.reply(`Chapa Response:\n<code>${JSON.stringify(data, null, 2)}</code>`, { parse_mode: 'HTML' });
+});
 bot.command('pay', async (ctx) => {
   const uid = ctx.from?.id;
   if (!uid) { await ctx.reply('Cannot identify user.'); return; }
