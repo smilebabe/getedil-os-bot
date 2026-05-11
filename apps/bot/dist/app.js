@@ -240,7 +240,8 @@ bot.command('pay', async (ctx) => {
         }
     }
     catch (e) {
-        await ctx.reply('Payment temporarily unavailable. Try again soon.');
+        console.error('Pay error:', e.message || e);
+        await ctx.reply(`Payment temporarily unavailable.\n\n<i>${e.message || 'Unknown error'}</i>`, { parse_mode: 'HTML' });
     }
 });
 ;
