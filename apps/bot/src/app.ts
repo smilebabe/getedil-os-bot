@@ -173,8 +173,8 @@ bot.command('pay', async (ctx) => {
         tx_ref,
         return_url: 'https://t.me/GETEDILOSBOT',
         callback_url: 'https://txhcnsxzcbkoroyasmlc.supabase.co/functions/v1/payment-webhook',
-        'customization[title]': "Get'Edil Course",
-        'customization[description]': 'AI Engineering 101',
+        'customization[title]': "Get'Edil Premium",
+        'customization[description]': 'AI Engineering 101 - Full Access',
       }),
     });
 
@@ -187,22 +187,16 @@ bot.command('pay', async (ctx) => {
         }).catch(() => {});
       }
       await ctx.reply(
-        `💳 <b>Complete Payment</b>\n\n💰 100 ETB (Test)\n📚 AI Engineering Course\n\n🔗 ${data.data.checkout_url}\n\n<i>Test card: 4242 4242 4242 4242 | Any date | Any CVV</i>`,
+        `💳 <b>Complete Your Payment</b>\n\n💰 Amount: 100 ETB\n📚 AI Engineering 101\n\n🔗 ${data.data.checkout_url}\n\n<i>Test card: 4242 4242 4242 4242</i>`,
         { parse_mode: 'HTML' }
       );
     } else {
-      await ctx.reply(
-        `💳 <b>Get'Edil Premium</b>\n\n📚 Full Course\n💰 500 ETB\n\n⚠️ Payment coming soon. Content FREE: /learn ai intro\n\n<code>${JSON.stringify(data)}</code>`,
-        { parse_mode: 'HTML' }
-      );
+      await ctx.reply(`Payment failed: ${JSON.stringify(data)}`);
     }
   } catch (e: any) {
-    await ctx.reply(
-      `💳 <b>Get'Edil Premium</b>\n\n📚 Full Course\n💰 500 ETB\n\n⚠️ Demo mode. All content FREE: /learn ai intro`,
-      { parse_mode: 'HTML' }
-    );
+    await ctx.reply('Payment temporarily unavailable. Try again soon.');
   }
-});bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /stats /help'); });
+});});bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /stats /help'); });
 
 bot.command('courses', async (ctx) => {
   await ctx.reply('📚 <b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro', { parse_mode: 'HTML' });
