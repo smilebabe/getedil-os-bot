@@ -193,8 +193,9 @@ bot.command('pay', async (ctx) => {
     } else {
       await ctx.reply(`Payment failed: ${JSON.stringify(data)}`);
     }
-  } catch (e: any) {
-    await ctx.reply('Payment temporarily unavailable. Try again soon.');
+    } catch (e: any) {
+    console.error('Pay error:', e.message || e);
+    await ctx.reply(`Payment temporarily unavailable.\n\n<i>${(e as any).message || 'Unknown error'}</i>`, { parse_mode: 'HTML' });
   }
 });});bot.command('help', async (ctx) => { await ctx.reply('/courses /jobs /memory /progress /stats /help'); });
 
