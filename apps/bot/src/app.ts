@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Telegraf } from 'telegraf';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
@@ -56,9 +57,6 @@ async function aiReply(msg: string): Promise<string> {
   } catch { return 'AI unavailable.'; }
 }
 
-const COURSES: Record<string, { title: string; mods: string[] }> = {
-  'ai': { title: 'AI Engineering 101', mods: ['intro', 'prompts', 'vectors', 'llm', 'apps'] },
-};
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 

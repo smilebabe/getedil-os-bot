@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
 const telegraf_1 = require("telegraf");
 const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
@@ -88,9 +89,6 @@ async function aiReply(msg) {
         return 'AI unavailable.';
     }
 }
-const COURSES = {
-    'ai': { title: 'AI Engineering 101', mods: ['intro', 'prompts', 'vectors', 'llm', 'apps'] },
-};
 const bot = new telegraf_1.Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 bot.command('start', async (ctx) => {
     if (ctx.from?.id)

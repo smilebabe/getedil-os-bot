@@ -1,0 +1,1 @@
+{"version":3,"file":"voice-transcriber.d.ts","sourceRoot":"","sources":["../src/voice-transcriber.ts"],"names":[],"mappings":"AAEA,qBAAa,gBAAgB;IAC3B,OAAO,CAAC,MAAM,CAAqB;;IAM7B,UAAU,CAAC,OAAO,EAAE,MAAM,GAAG,OAAO,CAAC;QAAE,IAAI,EAAE,MAAM,CAAC;QAAC,QAAQ,EAAE,MAAM,CAAA;KAAE,CAAC;CAwC/E"}

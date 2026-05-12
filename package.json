@@ -22,13 +22,16 @@
     "docker:run": "docker run -p 3000:3000 --env-file .env getedil-bot"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
+    "@types/node": "^20.11.0",
     "prettier": "^3.2.0",
-    "typescript": "^5.4.0",
-    "@types/node": "^20.11.0"
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
   },
   "packageManager": "npm@10.4.0",
   "engines": {
     "node": ">=20.11.0"
+  },
+  "dependencies": {
+    "formdata-node": "^6.0.3"
   }
 }

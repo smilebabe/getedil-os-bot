@@ -115,3 +115,4 @@ async function getUserProfileContext(supabase, telegramId) {
         return '';
     }
 }
+//# sourceMappingURL=embeddings.js.map
