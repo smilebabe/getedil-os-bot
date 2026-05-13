@@ -2,11 +2,3 @@
 > @getedil/bot@0.1.0 build
 > tsc
 
-src/app.ts(328,7): error TS2353: Object literal may only specify known properties, and 'disable_web_page_preview' does not exist in type 'Omit<{ chat_id: string | number; message_thread_id?: number; text: string; parse_mode?: ParseMode; entities?: MessageEntity[]; link_preview_options?: LinkPreviewOptions; disable_notification?: boolean; protect_content?: boolean; reply_parameters?: ReplyParameters; reply_markup?: InlineKeyboardMarkup | ... 2 more ......'.
-npm error Lifecycle script `build` failed with error:
-npm error code 2
-npm error path C:\Users\Geust\Desktop\getedil-os-bot\apps\bot
-npm error workspace @getedil/bot@0.1.0
-npm error location C:\Users\Geust\Desktop\getedil-os-bot\apps\bot
-npm error command failed
-npm error command C:\Windows\system32\cmd.exe /d /s /c tsc

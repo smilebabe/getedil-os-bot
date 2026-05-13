@@ -298,7 +298,7 @@ bot.command('jobs', async (ctx) => {
         }
         await ctx.reply(msg, {
             parse_mode: 'HTML',
-            disable_web_page_preview: true
+            link_preview_options: { is_disabled: true }
         });
     }
     catch {
