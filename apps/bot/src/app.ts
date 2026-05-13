@@ -19,8 +19,7 @@ try {
   const url = process.env.SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   if (url && key) {
-    supabase = createClient(url, key, { realtime: { transport: WebSocket }, auth: { persistSession: false } });
-    console.log('📦 Supabase connected');
+   supabase = createClient(url, key, { realtime: { transport: WebSocket as any }, auth: { persistSession: false } });
   }
 } catch(e: any) { console.log('⚠️ Supabase init failed:', e.message); }
 
@@ -108,7 +107,7 @@ bot.command('pay', async (ctx) => {
     const tx_ref = 'GETEDIL-' + Date.now() + '-' + uid;
     const r = await fetch('https://api.chapa.co/v1/transaction/initialize', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + (process.env.CHAPA_SECRET_KEY || 'CHASECK_TEST-G89UwLELjEXm0QgS2JdWKNxs2de0BppJ'), 'Content-Type': 'application/json' },
+      headers: { Authorization: 'Bearer ' + process.env.CHAPA_SECRET_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: 100, currency: 'ETB', email: 'student' + uid + '@gmail.com', first_name: ctx.from?.first_name || 'Student', last_name: ctx.from?.last_name || '', tx_ref, return_url: 'https://t.me/GETEDILOSBOT', callback_url: 'https://txhcnsxzcbkoroyasmlc.supabase.co/functions/v1/payment-webhook', 'customization[title]': "Get'Edil Premium", 'customization[description]': 'AI Engineering 101' }),
     });
     const d: any = await r.json();
