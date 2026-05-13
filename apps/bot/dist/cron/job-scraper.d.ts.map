@@ -1,1 +1,1 @@
-{"version":3,"file":"job-scraper.d.ts","sourceRoot":"","sources":["../../src/cron/job-scraper.ts"],"names":[],"mappings":"AAAA,OAAO,eAAe,CAAC;AAiHvB,wBAAsB,aAAa,kBAUlC"}
+{"version":3,"file":"job-scraper.d.ts","sourceRoot":"","sources":["../../src/cron/job-scraper.ts"],"names":[],"mappings":"AAAA,OAAO,eAAe,CAAC;AA2HvB,wBAAsB,aAAa,kBAWlC"}
