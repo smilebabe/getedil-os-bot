@@ -5,6 +5,7 @@ import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
 import WebSocket from 'ws';
+import cron from 'node-cron';
 
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
@@ -514,6 +515,17 @@ createServer((req, res) => {
   }
   res.writeHead(200).end('GETEDIL-OS-BOT');
 }).listen(port, () => console.log('🏥 Health :' + port));
+// Daily learning tips at 9 AM
+cron.schedule('0 9 * * *', async () => {
+  console.log('🌅 Sending daily tips...');
+  try {
+    const { sendDailyTips } = await import('./cron/daily-tip.js');
+    await sendDailyTips();
+  } catch (e) {
+    console.error('Daily tips failed:', e);
+  }
+});
+
 
 bot.launch({ dropPendingUpdates: true })
   .then(() => console.log('✅ Polling connected'))

@@ -10,6 +10,7 @@ const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
 const ws_1 = __importDefault(require("ws"));
+const node_cron_1 = __importDefault(require("node-cron"));
 const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
 let transcriber = null;
@@ -479,6 +480,17 @@ const port = parseInt(process.env.PORT || '10000');
     }
     res.writeHead(200).end('GETEDIL-OS-BOT');
 }).listen(port, () => console.log('🏥 Health :' + port));
+// Daily learning tips at 9 AM
+node_cron_1.default.schedule('0 9 * * *', async () => {
+    console.log('🌅 Sending daily tips...');
+    try {
+        const { sendDailyTips } = await import('./cron/daily-tip.js');
+        await sendDailyTips();
+    }
+    catch (e) {
+        console.error('Daily tips failed:', e);
+    }
+});
 bot.launch({ dropPendingUpdates: true })
     .then(() => console.log('✅ Polling connected'))
     .catch(() => setTimeout(() => bot.launch({ dropPendingUpdates: true }), 5000));
