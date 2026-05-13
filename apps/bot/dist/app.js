@@ -278,11 +278,32 @@ bot.use(async (ctx, next) => {
     return next();
 });
 // === COMMANDS ===
-bot.command('start', async (ctx) => {
-    if (ctx.from?.id)
-        await saveProfile(ctx.from.id, ctx.from.first_name || 'Student', ctx.from.username);
-    await ctx.reply(`👋 Welcome to <b>Get'Edil</b>! 🚀\n\n` +
-        `📚 /courses | 💼 /jobs | 💳 /pay | /help`, { parse_mode: 'HTML' });
+bot.command('jobs', async (ctx) => {
+    try {
+        const { data: jobs } = await supabase
+            .from('jobs')
+            .select('*')
+            .order('posted_at', { ascending: false })
+            .limit(10);
+        if (!jobs || jobs.length === 0) {
+            await ctx.reply('💼 No jobs found. Try again later!');
+            return;
+        }
+        let msg = '💼 <b>Latest Tech Jobs</b>\n\n';
+        for (const job of jobs) {
+            const emoji = job.type === 'remote' ? '🌐' : job.type === 'freelance' ? '💻' : '🏢';
+            msg += `${emoji} <b>${job.title}</b>\n`;
+            msg += `   ${job.company} | ${job.location}\n`;
+            msg += `   <a href="${job.url}">Apply</a>\n\n`;
+        }
+        await ctx.reply(msg, {
+            parse_mode: 'HTML',
+            disable_web_page_preview: true
+        });
+    }
+    catch {
+        await ctx.reply('💼 Jobs unavailable. Try: /jobs later');
+    }
 });
 bot.command('help', async (ctx) => {
     await ctx.reply('/courses /jobs /pay /memory /progress /stats /spamstats /help');
@@ -489,6 +510,17 @@ node_cron_1.default.schedule('0 9 * * *', async () => {
     }
     catch (e) {
         console.error('Daily tips failed:', e);
+    }
+});
+// Scrape jobs every 6 hours
+node_cron_1.default.schedule('0 */6 * * *', async () => {
+    console.log('🔍 Scheduled job scraping...');
+    try {
+        const { scrapeAllJobs } = await import('./cron/job-scraper.js');
+        await scrapeAllJobs();
+    }
+    catch (e) {
+        console.error('Job scraping failed:', e);
     }
 });
 bot.launch({ dropPendingUpdates: true })
