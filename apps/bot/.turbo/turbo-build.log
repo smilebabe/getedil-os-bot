@@ -2,3 +2,19 @@
 > @getedil/bot@0.1.0 build
 > tsc
 
+src/app.ts(85,9): error TS6133: 'chatId' is declared but its value is never read.
+src/app.ts(261,9): error TS2339: Property 'user' does not exist on type 'Context<Update>'.
+src/app.ts(291,29): error TS2339: Property 'text' does not exist on type 'New & (NonChannel & Message)'.
+  Property 'text' does not exist on type 'New & NonChannel & AnimationMessage'.
+src/app.ts(291,50): error TS2339: Property 'caption' does not exist on type 'New & (NonChannel & Message)'.
+  Property 'caption' does not exist on type 'New & NonChannel & ContactMessage'.
+src/app.ts(329,27): error TS2538: Type 'undefined' cannot be used as an index type.
+src/app.ts(337,49): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path C:\Users\Geust\Desktop\getedil-os-bot\apps\bot
+npm error workspace @getedil/bot@0.1.0
+npm error location C:\Users\Geust\Desktop\getedil-os-bot\apps\bot
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c tsc
