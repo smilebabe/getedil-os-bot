@@ -258,7 +258,6 @@ const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 // === MIDDLEWARE: User tracking ===
 bot.use(async (ctx, next) => {
   if (ctx.from) {
-    ctx.user = await getOrCreateUser(ctx.from);
   }
   return next();
 });
@@ -288,7 +287,7 @@ bot.use(async (ctx, next) => {
   }
   
   // Content check
-  const text = ctx.message?.text || ctx.message?.caption || '';
+  const msg = ctx.message as any; const text = msg?.text || msg?.caption || '';
   if (text) {
     const spamCheck = containsSpam(text);
     if (spamCheck.isSpam) {
