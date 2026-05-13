@@ -9,7 +9,7 @@ const generative_ai_1 = require("@google/generative-ai");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
-const WebSocket = require('ws');
+const ws_1 = __importDefault(require("ws"));
 const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
 let transcriber = null;
@@ -20,7 +20,7 @@ try {
     const url = process.env.SUPABASE_URL || '';
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     if (url && key) {
-        supabase = (0, supabase_js_1.createClient)(url, key, { realtime: { transport: WebSocket }, auth: { persistSession: false } });
+        supabase = (0, supabase_js_1.createClient)(url, key, { realtime: { transport: ws_1.default }, auth: { persistSession: false } });
         console.log('📦 Supabase connected');
     }
 }
