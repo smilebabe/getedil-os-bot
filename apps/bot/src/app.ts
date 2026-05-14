@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { Telegraf } from 'telegraf';
+import { writeFileSync, unlinkSync, existsSync } from 'fs';
+import { Telegraf, InputFile } from 'telegraf';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
@@ -239,10 +240,10 @@ async function aiReply(msg: string): Promise<string> {
 }
 
 // === TTS FUNCTION ===
-async function textToSpeech(text: string, lang: 'en' | 'am' = 'en'): Promise<Buffer> {
+async function textToSpeech(text: string, lang: 'en' | 'am' = 'en'): Promise<string> {
   const voice = lang === 'am' 
-    ? 'am-ET-AmehaNeural'      // Amharic male voice
-    : 'en-US-GuyNeural';       // English male voice
+    ? 'am-ET-AmehaNeural'
+    : 'en-US-GuyNeural';
 
   console.log(`[TTS] lang=${lang}, voice=${voice}`);
 
@@ -250,9 +251,14 @@ async function textToSpeech(text: string, lang: 'en' | 'am' = 'en'): Promise<Buf
     const tts = new EdgeTTS(text.substring(0, 500), voice);
     const result = await tts.synthesize();
     const arrayBuffer = await result.audio.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     
-    console.log(`[TTS] Success, ${arrayBuffer.byteLength} bytes`);
-    return Buffer.from(arrayBuffer);
+    // Save to temp file for reliable Telegram upload
+    const tempPath = `/tmp/voice-${Date.now()}.mp3`;
+    writeFileSync(tempPath, buffer);
+    
+    console.log(`[TTS] Success, ${buffer.length} bytes saved to ${tempPath}`);
+    return tempPath;
   } catch (err) {
     console.error('[TTS] Edge TTS failed:', err);
     throw err;
@@ -495,14 +501,23 @@ bot.command('voice', async (ctx) => {
   
   await ctx.reply('🎙️ Generating voice...');
   
-    try {
+  let tempPath: string | null = null;
+  
+  try {
     const isAmharic = /[\u1200-\u137F]/.test(lastReply);
-    const audioBuffer = await textToSpeech(lastReply, isAmharic ? 'am' : 'en');
+    tempPath = await textToSpeech(lastReply, isAmharic ? 'am' : 'en');
     
-    await ctx.replyWithAudio({ source: audioBuffer });
+    // Send as file path - Telegram reads the file stream
+    await ctx.replyWithAudio({ source: tempPath });
+    console.log('[TTS] Audio sent successfully');
   } catch (err) {
     console.error('[TTS] Send error:', err);
     await ctx.reply('❌ Voice generation failed. Try again.');
+  } finally {
+    // Clean up temp file
+    if (tempPath && existsSync(tempPath)) {
+      try { unlinkSync(tempPath); } catch {}
+    }
   }
 });
 
@@ -560,19 +575,23 @@ bot.on('text', async (ctx) => {
         .eq('telegram_id', uid)
         .single();
       
-      if (profile?.voice_replies) {
-  await ctx.sendChatAction('record_voice');
-  const isAmharic = /[\u1200-\u137F]/.test(reply);
-  const audioBuffer = await textToSpeech(reply, isAmharic ? 'am' : 'en');
-  await ctx.replyWithAudio({ source: audioBuffer });  // <-- CHANGED
-  return;
-}
-    }
-    
-    await ctx.reply(reply); 
-  } catch { 
-    await ctx.reply('Error.'); 
-  }
+                    if (profile?.voice_replies) {
+        await ctx.sendChatAction('record_voice');
+        const isAmharic = /[\u1200-\u137F]/.test(reply);
+        let tempPath: string | null = null;
+        
+        try {
+          tempPath = await textToSpeech(reply, isAmharic ? 'am' : 'en');
+          await ctx.replyWithAudio({ source: tempPath });
+        } catch (err) {
+          console.error('[TTS] Auto voice error:', err);
+        } finally {
+          if (tempPath && existsSync(tempPath)) {
+            try { unlinkSync(tempPath); } catch {}
+          }
+        }
+        return;
+      }
 });
 
 class VoiceTranscriber {
