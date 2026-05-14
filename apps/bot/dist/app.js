@@ -221,35 +221,47 @@ async function aiReply(msg) {
 }
 // === TTS FUNCTION ===
 async function textToSpeech(text, lang = 'en') {
+    console.log(`[TTS] Requested lang=${lang}, text="${text.substring(0, 50)}..."`);
     if (lang === 'am') {
-        // Fallback to Google TTS for Amharic
+        console.log('[TTS] Using Google fallback for Amharic');
         return googleTextToSpeech(text, lang);
     }
-    // Use ElevenLabs for English
     const apiKey = process.env.ELEVENLABS_API_KEY;
+    console.log(`[TTS] API key present: ${apiKey ? 'YES (' + apiKey.substring(0, 8) + '...)' : 'NO - MISSING'}`);
     if (!apiKey) {
         throw new Error('ELEVENLABS_API_KEY not set');
     }
-    const voiceId = '21m00Tcm4TlvDq8ikWAM'; // Adam
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-        method: 'POST',
-        headers: {
-            'Accept': 'audio/mpeg',
-            'Content-Type': 'application/json',
-            'xi-api-key': apiKey
-        },
-        body: JSON.stringify({
-            text: text.substring(0, 500),
-            model_id: 'eleven_multilingual_v2', // or eleven_flash_v2_5 for speed
-            voice_settings: { stability: 0.5, similarity_boost: 0.5 }
-        })
-    });
-    if (!res.ok) {
-        const error = await res.text();
-        throw new Error(`ElevenLabs failed: ${res.status} - ${error}`);
+    const voiceId = '21m00Tcm4TlvDq8ikWAM';
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+    console.log(`[TTS] Calling ElevenLabs: ${url}`);
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Accept': 'audio/mpeg',
+                'Content-Type': 'application/json',
+                'xi-api-key': apiKey
+            },
+            body: JSON.stringify({
+                text: text.substring(0, 500),
+                model_id: 'eleven_multilingual_v2',
+                voice_settings: { stability: 0.5, similarity_boost: 0.5 }
+            })
+        });
+        console.log(`[TTS] ElevenLabs status: ${res.status}`);
+        if (!res.ok) {
+            const errorBody = await res.text();
+            console.error(`[TTS] ElevenLabs error body: ${errorBody}`);
+            throw new Error(`ElevenLabs failed: ${res.status} - ${errorBody}`);
+        }
+        const arrayBuffer = await res.arrayBuffer();
+        console.log(`[TTS] Success, received ${arrayBuffer.byteLength} bytes`);
+        return Buffer.from(arrayBuffer);
     }
-    const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    catch (err) {
+        console.error('[TTS] Fetch exception:', err);
+        throw err;
+    }
 }
 // Fallback Google TTS for Amharic
 async function googleTextToSpeech(text, lang) {
