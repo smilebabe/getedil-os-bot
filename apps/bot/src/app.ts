@@ -499,7 +499,7 @@ bot.command('voice', async (ctx) => {
     const isAmharic = /[\u1200-\u137F]/.test(lastReply);
     const audioBuffer = await textToSpeech(lastReply, isAmharic ? 'am' : 'en');
     
-    await ctx.replyWithVoice({ source: audioBuffer });
+    await ctx.replyWithAudio({ source: audioBuffer });
   } catch {
     await ctx.reply('❌ Voice generation failed. Try again.');
   }
@@ -560,12 +560,12 @@ bot.on('text', async (ctx) => {
         .single();
       
       if (profile?.voice_replies) {
-        await ctx.sendChatAction('record_voice');
-        const isAmharic = /[\u1200-\u137F]/.test(reply);
-        const audioBuffer = await textToSpeech(reply, isAmharic ? 'am' : 'en');
-        await ctx.replyWithVoice({ source: audioBuffer });
-        return;
-      }
+  await ctx.sendChatAction('record_voice');
+  const isAmharic = /[\u1200-\u137F]/.test(reply);
+  const audioBuffer = await textToSpeech(reply, isAmharic ? 'am' : 'en');
+  await ctx.replyWithAudio({ source: audioBuffer });  // <-- CHANGED
+  return;
+}
     }
     
     await ctx.reply(reply); 
