@@ -239,19 +239,54 @@ async function aiReply(msg: string): Promise<string> {
 
 // === TTS FUNCTION ===
 async function textToSpeech(text: string, lang: 'en' | 'am' = 'en'): Promise<Buffer> {
-  const langCode = lang === 'am' ? 'am' : 'en';
+  if (lang === 'am') {
+    // Fallback to Google TTS for Amharic
+    return googleTextToSpeech(text, lang);
+  }
+  
+  // Use ElevenLabs for English
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    throw new Error('ELEVENLABS_API_KEY not set');
+  }
+
+  const voiceId = '21m00Tcm4TlvDq8ikWAM'; // Adam
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'audio/mpeg',
+      'Content-Type': 'application/json',
+      'xi-api-key': apiKey
+    },
+    body: JSON.stringify({
+      text: text.substring(0, 500),
+      model_id: 'eleven_multilingual_v2', // or eleven_flash_v2_5 for speed
+      voice_settings: { stability: 0.5, similarity_boost: 0.5 }
+    })
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`ElevenLabs failed: ${res.status} - ${error}`);
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+// Fallback Google TTS for Amharic
+async function googleTextToSpeech(text: string, lang: string): Promise<Buffer> {
   const encodedText = encodeURIComponent(text.substring(0, 500));
-  const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=${langCode}&client=tw-ob`;
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=${lang}&client=tw-ob`;
   
   const res = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'https://translate.google.com/'
     }
   });
   
-  if (!res.ok) {
-    throw new Error(`TTS failed: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Google TTS failed: ${res.status}`);
   
   const arrayBuffer = await res.arrayBuffer();
   return Buffer.from(arrayBuffer);
