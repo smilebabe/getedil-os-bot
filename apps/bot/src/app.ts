@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { writeFileSync, unlinkSync, existsSync } from 'fs';
-import { Telegraf, InputFile } from 'telegraf';
+import { Telegraf } from 'telegraf';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { createClient } from '@supabase/supabase-js';
@@ -575,7 +575,7 @@ bot.on('text', async (ctx) => {
         .eq('telegram_id', uid)
         .single();
       
-                    if (profile?.voice_replies) {
+                          if (profile?.voice_replies) {
         await ctx.sendChatAction('record_voice');
         const isAmharic = /[\u1200-\u137F]/.test(reply);
         let tempPath: string | null = null;
@@ -592,6 +592,12 @@ bot.on('text', async (ctx) => {
         }
         return;
       }
+    }
+    
+    await ctx.reply(reply); 
+  } catch { 
+    await ctx.reply('Error.'); 
+  }
 });
 
 class VoiceTranscriber {
