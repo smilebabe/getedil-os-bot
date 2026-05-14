@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
 import WebSocket from 'ws';
 import cron from 'node-cron';
+import { EdgeTTS } from 'edge-tts-universal';
 
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
@@ -239,73 +240,24 @@ async function aiReply(msg: string): Promise<string> {
 
 // === TTS FUNCTION ===
 async function textToSpeech(text: string, lang: 'en' | 'am' = 'en'): Promise<Buffer> {
-  console.log(`[TTS] Requested lang=${lang}, text="${text.substring(0, 50)}..."`);
+  const voice = lang === 'am' 
+    ? 'am-ET-AmehaNeural'      // Amharic male voice
+    : 'en-US-GuyNeural';       // English male voice
 
-  if (lang === 'am') {
-    console.log('[TTS] Using Google fallback for Amharic');
-    return googleTextToSpeech(text, lang);
-  }
-
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  console.log(`[TTS] API key present: ${apiKey ? 'YES (' + apiKey.substring(0, 8) + '...)' : 'NO - MISSING'}`);
-
-  if (!apiKey) {
-    throw new Error('ELEVENLABS_API_KEY not set');
-  }
-
-  const voiceId = '21m00Tcm4TlvDq8ikWAM';
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
-  console.log(`[TTS] Calling ElevenLabs: ${url}`);
+  console.log(`[TTS] lang=${lang}, voice=${voice}`);
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': apiKey
-      },
-      body: JSON.stringify({
-        text: text.substring(0, 500),
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: { stability: 0.5, similarity_boost: 0.5 }
-      })
-    });
-
-    console.log(`[TTS] ElevenLabs status: ${res.status}`);
+    const tts = new EdgeTTS(text.substring(0, 500), voice);
+    const result = await tts.synthesize();
+    const arrayBuffer = await result.audio.arrayBuffer();
     
-    if (!res.ok) {
-      const errorBody = await res.text();
-      console.error(`[TTS] ElevenLabs error body: ${errorBody}`);
-      throw new Error(`ElevenLabs failed: ${res.status} - ${errorBody}`);
-    }
-
-    const arrayBuffer = await res.arrayBuffer();
-    console.log(`[TTS] Success, received ${arrayBuffer.byteLength} bytes`);
+    console.log(`[TTS] Success, ${arrayBuffer.byteLength} bytes`);
     return Buffer.from(arrayBuffer);
   } catch (err) {
-    console.error('[TTS] Fetch exception:', err);
+    console.error('[TTS] Edge TTS failed:', err);
     throw err;
   }
 }
-// Fallback Google TTS for Amharic
-async function googleTextToSpeech(text: string, lang: string): Promise<Buffer> {
-  const encodedText = encodeURIComponent(text.substring(0, 500));
-  const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=${lang}&client=tw-ob`;
-  
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Referer': 'https://translate.google.com/'
-    }
-  });
-  
-  if (!res.ok) throw new Error(`Google TTS failed: ${res.status}`);
-  
-  const arrayBuffer = await res.arrayBuffer();
-  return Buffer.from(arrayBuffer);
-}
-
 const COURSES: Record<string, Record<string, string>> = {
   'ai': {
     'intro': '🤖 **What is AI?**\n\nAI is when computers learn to do tasks that normally need human intelligence.\n\n*Key idea:* Instead of programming every rule, we show the computer *examples* and it learns patterns.\n\n*Your turn:* Ask me anything about AI!',
