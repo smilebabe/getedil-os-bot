@@ -11,7 +11,6 @@ const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
 const ws_1 = __importDefault(require("ws"));
 const node_cron_1 = __importDefault(require("node-cron"));
-const gtts_1 = __importDefault(require("gtts"));
 const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
 let transcriber = null;
@@ -222,13 +221,19 @@ async function aiReply(msg) {
 }
 // === TTS FUNCTION ===
 async function textToSpeech(text, lang = 'en') {
-    return new Promise((resolve, reject) => {
-        const tts = new gtts_1.default(text.substring(0, 500), lang === 'am' ? 'am' : 'en');
-        const chunks = [];
-        tts.stream().on('data', (chunk) => chunks.push(chunk));
-        tts.stream().on('end', () => resolve(Buffer.concat(chunks)));
-        tts.stream().on('error', reject);
+    const langCode = lang === 'am' ? 'am' : 'en';
+    const encodedText = encodeURIComponent(text.substring(0, 500));
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=${langCode}&client=tw-ob`;
+    const res = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
     });
+    if (!res.ok) {
+        throw new Error(`TTS failed: ${res.status}`);
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
 }
 const COURSES = {
     'ai': {

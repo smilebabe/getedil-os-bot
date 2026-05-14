@@ -6,7 +6,6 @@ import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
 import WebSocket from 'ws';
 import cron from 'node-cron';
-import gTTS from 'gtts';
 
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
@@ -240,14 +239,22 @@ async function aiReply(msg: string): Promise<string> {
 
 // === TTS FUNCTION ===
 async function textToSpeech(text: string, lang: 'en' | 'am' = 'en'): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const tts = new gTTS(text.substring(0, 500), lang === 'am' ? 'am' : 'en');
-    const chunks: Buffer[] = [];
-    
-    tts.stream().on('data', (chunk: Buffer) => chunks.push(chunk));
-    tts.stream().on('end', () => resolve(Buffer.concat(chunks)));
-    tts.stream().on('error', reject);
+  const langCode = lang === 'am' ? 'am' : 'en';
+  const encodedText = encodeURIComponent(text.substring(0, 500));
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=${langCode}&client=tw-ob`;
+  
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
   });
+  
+  if (!res.ok) {
+    throw new Error(`TTS failed: ${res.status}`);
+  }
+  
+  const arrayBuffer = await res.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 const COURSES: Record<string, Record<string, string>> = {
