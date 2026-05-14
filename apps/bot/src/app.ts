@@ -495,12 +495,13 @@ bot.command('voice', async (ctx) => {
   
   await ctx.reply('🎙️ Generating voice...');
   
-  try {
+    try {
     const isAmharic = /[\u1200-\u137F]/.test(lastReply);
     const audioBuffer = await textToSpeech(lastReply, isAmharic ? 'am' : 'en');
     
     await ctx.replyWithAudio({ source: audioBuffer });
-  } catch {
+  } catch (err) {
+    console.error('[TTS] Send error:', err);
     await ctx.reply('❌ Voice generation failed. Try again.');
   }
 });
