@@ -495,16 +495,16 @@ bot.command('voice', async (ctx) => {
   
   await ctx.reply('🎙️ Generating voice...');
   
-    try {
+      try {
     const isAmharic = /[\u1200-\u137F]/.test(lastReply);
     const audioBuffer = await textToSpeech(lastReply, isAmharic ? 'am' : 'en');
     
     await ctx.replyWithAudio(new InputFile(audioBuffer, 'voice.mp3'));
-  } catch (err: any) {
-    console.error('[TTS] Send error:', err.message || err);
+  } catch (err) {
+    console.error('[TTS] Send error:', err);
     await ctx.reply('❌ Voice generation failed. Try again.');
   }
-
+});
 bot.command('settings', async (ctx) => {
   await ctx.reply(
     '⚙️ <b>Settings</b>\n\n' +
@@ -559,14 +559,13 @@ bot.on('text', async (ctx) => {
         .eq('telegram_id', uid)
         .single();
       
-        if (profile?.voice_replies) {
-    await ctx.sendChatAction('record_voice');
-    const isAmharic = /[\u1200-\u137F]/.test(reply);
-    const audioBuffer = await textToSpeech(reply, isAmharic ? 'am' : 'en');
-    
-    await ctx.replyWithAudio(new InputFile(audioBuffer, 'voice.mp3'));
-    return;
-  }
+              if (profile?.voice_replies) {
+        await ctx.sendChatAction('record_voice');
+        const isAmharic = /[\u1200-\u137F]/.test(reply);
+        const audioBuffer = await textToSpeech(reply, isAmharic ? 'am' : 'en');
+        await ctx.replyWithAudio(new InputFile(audioBuffer, 'voice.mp3'));
+        return;
+      }
     }
     
     await ctx.reply(reply); 
