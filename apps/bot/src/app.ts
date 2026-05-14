@@ -507,14 +507,13 @@ bot.command('voice', async (ctx) => {
     const isAmharic = /[\u1200-\u137F]/.test(lastReply);
     tempPath = await textToSpeech(lastReply, isAmharic ? 'am' : 'en');
     
-    // Send as file path - Telegram reads the file stream
-    await ctx.replyWithAudio({ source: tempPath });
-    console.log('[TTS] Audio sent successfully');
+    // Send as document - more reliable than sendAudio for uploads
+    await ctx.replyWithDocument({ source: tempPath }, { caption: '🔊 Voice message' });
+    console.log('[TTS] Document sent successfully');
   } catch (err) {
     console.error('[TTS] Send error:', err);
     await ctx.reply('❌ Voice generation failed. Try again.');
   } finally {
-    // Clean up temp file
     if (tempPath && existsSync(tempPath)) {
       try { unlinkSync(tempPath); } catch {}
     }
@@ -567,7 +566,7 @@ bot.on('text', async (ctx) => {
     const reply = await aiReply(msg); 
     if (uid) await saveMsg(uid, 'assistant', reply);
     
-    // Check if user wants voice replies
+        // Check if user wants voice replies
     if (uid) {
       const { data: profile } = await supabase
         .from('user_profiles')
@@ -575,14 +574,14 @@ bot.on('text', async (ctx) => {
         .eq('telegram_id', uid)
         .single();
       
-                          if (profile?.voice_replies) {
+      if (profile?.voice_replies) {
         await ctx.sendChatAction('record_voice');
         const isAmharic = /[\u1200-\u137F]/.test(reply);
         let tempPath: string | null = null;
         
         try {
           tempPath = await textToSpeech(reply, isAmharic ? 'am' : 'en');
-          await ctx.replyWithAudio({ source: tempPath });
+          await ctx.replyWithDocument({ source: tempPath }, { caption: '🔊 Voice message' });
         } catch (err) {
           console.error('[TTS] Auto voice error:', err);
         } finally {
