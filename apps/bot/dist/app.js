@@ -11,13 +11,14 @@ const supabase_js_1 = require("@supabase/supabase-js");
 const http_1 = require("http");
 const ws_1 = __importDefault(require("ws"));
 const node_cron_1 = __importDefault(require("node-cron"));
+const gtts_1 = __importDefault(require("gtts"));
 const gemini = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new groq_sdk_1.default({ apiKey: process.env.GROQ_API_KEY || '' });
 let transcriber = null;
 const activeUsers = new Set();
 // === ANTI-SPAM SYSTEM ===
 const rateLimits = new Map();
-const userViolations = new Map(); // Track repeat offenders
+const userViolations = new Map();
 const SPAM_KEYWORDS = [
     'earn money fast', 'double your', 'investment opportunity',
     'click here', 'limited time', 'act now', 'guaranteed profit',
@@ -29,8 +30,8 @@ const SPAM_KEYWORDS = [
 ];
 function isRateLimited(userId) {
     const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minute
-    const maxMessages = 10; // 10 messages per minute
+    const windowMs = 60 * 1000;
+    const maxMessages = 10;
     const userLimit = rateLimits.get(userId);
     if (!userLimit || now > userLimit.resetAt) {
         rateLimits.set(userId, { count: 1, resetAt: now + windowMs });
@@ -63,7 +64,6 @@ function containsSpam(text) {
     if (/(.)\1{10,}/.test(text)) {
         return { isSpam: true, reason: 'Repeated characters' };
     }
-    // Check for phone numbers (common scam pattern)
     if (/\+\d{10,}/.test(text) && lower.includes('contact')) {
         return { isSpam: true, reason: 'Contact number spam' };
     }
@@ -71,25 +71,20 @@ function containsSpam(text) {
 }
 async function handleSpam(ctx, reason) {
     const userId = ctx.from?.id;
-    const chatId = ctx.chat?.id;
     console.log(`🚫 Spam from ${ctx.from?.first_name} (${userId}): ${reason}`);
-    // Track violations
     const violations = (userViolations.get(userId) || 0) + 1;
     userViolations.set(userId, violations);
-    // Delete message
     try {
         await ctx.deleteMessage();
     }
     catch {
         console.log('Could not delete message — not admin?');
     }
-    // Warning message
     let warning = `⚠️ <b>Anti-Spam</b>\n\n${ctx.from?.first_name}, your message was removed: ${reason}`;
     if (violations >= 3) {
         warning += `\n\n🚫 <b>You have ${violations} violations.</b> One more and you will be removed.`;
     }
     await ctx.reply(warning, { parse_mode: 'HTML' });
-    // Auto-ban on 5 violations
     if (violations >= 5) {
         try {
             await ctx.banChatMember(userId);
@@ -99,7 +94,6 @@ async function handleSpam(ctx, reason) {
             console.log('Could not ban — not admin?');
         }
     }
-    // Log to Supabase
     try {
         await supabase.from('spam_logs').insert({
             telegram_id: userId,
@@ -226,6 +220,16 @@ async function aiReply(msg) {
         return 'AI unavailable.';
     }
 }
+// === TTS FUNCTION ===
+async function textToSpeech(text, lang = 'en') {
+    return new Promise((resolve, reject) => {
+        const tts = new gtts_1.default(text.substring(0, 500), lang === 'am' ? 'am' : 'en');
+        const chunks = [];
+        tts.stream().on('data', (chunk) => chunks.push(chunk));
+        tts.stream().on('end', () => resolve(Buffer.concat(chunks)));
+        tts.stream().on('error', reject);
+    });
+}
 const COURSES = {
     'ai': {
         'intro': '🤖 **What is AI?**\n\nAI is when computers learn to do tasks that normally need human intelligence.\n\n*Key idea:* Instead of programming every rule, we show the computer *examples* and it learns patterns.\n\n*Your turn:* Ask me anything about AI!',
@@ -236,36 +240,24 @@ const COURSES = {
     }
 };
 const bot = new telegraf_1.Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
-// === MIDDLEWARE: User tracking ===
-bot.use(async (ctx, next) => {
-    if (ctx.from) {
-    }
-    return next();
-});
 // === ANTI-SPAM MIDDLEWARE ===
 bot.use(async (ctx, next) => {
-    // Only in groups/channels
     if (ctx.chat?.type === 'private')
         return next();
     const userId = ctx.from?.id;
     if (!userId)
         return next();
-    // Skip admins
     try {
         const member = await ctx.getChatMember(userId);
         if (member.status === 'administrator' || member.status === 'creator') {
             return next();
         }
     }
-    catch {
-        // Can't check, proceed with caution
-    }
-    // Rate limit check
+    catch { }
     if (isRateLimited(userId)) {
         await handleSpam(ctx, 'Too many messages');
         return;
     }
-    // Content check
     const msg = ctx.message;
     const text = msg?.text || msg?.caption || '';
     if (text) {
@@ -278,6 +270,39 @@ bot.use(async (ctx, next) => {
     return next();
 });
 // === COMMANDS ===
+bot.command('start', async (ctx) => {
+    if (ctx.from?.id)
+        await saveProfile(ctx.from.id, ctx.from.first_name || 'Student', ctx.from.username);
+    await ctx.reply(`👋 Welcome to <b>Get'Edil</b>! 🚀\n\n` +
+        `📚 /courses | 💼 /jobs | 💳 /pay | 🎙️ /voice | ⚙️ /settings | /help`, { parse_mode: 'HTML' });
+});
+bot.command('help', async (ctx) => {
+    await ctx.reply('/courses /jobs /pay /voice /memory /progress /stats /spamstats /settings /help');
+});
+bot.command('courses', async (ctx) => {
+    await ctx.reply('📚 <b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro', { parse_mode: 'HTML' });
+});
+bot.command('learn', async (ctx) => {
+    const args = ctx.message.text.split(' ').slice(1);
+    if (args.length < 2) {
+        await ctx.reply('📚 /learn ai intro | /learn ai prompts | /learn ai vectors | /learn ai llm | /learn ai apps');
+        return;
+    }
+    const courseId = args[0];
+    const modId = args[1];
+    if (!courseId || !modId) {
+        await ctx.reply('📚 /learn ai intro | /learn ai prompts | /learn ai vectors | /learn ai llm | /learn ai apps');
+        return;
+    }
+    const content = COURSES[courseId]?.[modId];
+    if (!content) {
+        await ctx.reply('❌ Module not found. Try: /learn ai intro');
+        return;
+    }
+    await ctx.reply(content, { parse_mode: 'Markdown' });
+    if (ctx.from?.id)
+        await markDone(ctx.from.id, courseId, modId);
+});
 bot.command('jobs', async (ctx) => {
     try {
         const { data: jobs } = await supabase
@@ -304,38 +329,6 @@ bot.command('jobs', async (ctx) => {
     catch {
         await ctx.reply('💼 Jobs unavailable. Try: /jobs later');
     }
-});
-bot.command('help', async (ctx) => {
-    await ctx.reply('/courses /jobs /pay /memory /progress /stats /spamstats /help');
-});
-bot.command('courses', async (ctx) => {
-    await ctx.reply('📚 <b>AI Engineering 101</b> — 5 modules\n👉 /learn ai intro', { parse_mode: 'HTML' });
-});
-bot.command('learn', async (ctx) => {
-    const args = ctx.message.text.split(' ').slice(1);
-    if (args.length < 2) {
-        await ctx.reply('📚 /learn ai intro | /learn ai prompts | /learn ai vectors | /learn ai llm | /learn ai apps');
-        return;
-    }
-    const [courseId, modId] = args;
-    const content = COURSES[courseId]?.[modId];
-    if (!content) {
-        await ctx.reply('❌ Module not found. Try: /learn ai intro');
-        return;
-    }
-    await ctx.reply(content, { parse_mode: 'Markdown' });
-    if (ctx.from?.id)
-        await markDone(ctx.from.id, courseId, modId);
-});
-bot.command('jobs', async (ctx) => {
-    const jobs = [
-        'AI/ML Engineer - Ethiopian AI Institute',
-        'Full Stack Developer - Safaricom Ethiopia',
-        'Python Developer - Remote/Addis',
-        'Data Scientist - CBE',
-        'Freelance AI Trainer - Upwork/Fiverr'
-    ];
-    await ctx.reply('💼 <b>Ethiopian Tech Jobs</b>\n\n' + jobs.map(j => '• ' + j).join('\n'), { parse_mode: 'HTML' });
 });
 bot.command('memory', async (ctx) => {
     const uid = ctx.from?.id;
@@ -429,6 +422,52 @@ bot.command('spamstats', async (ctx) => {
         await ctx.reply('Stats unavailable.');
     }
 });
+// === VOICE COMMANDS ===
+bot.command('voice', async (ctx) => {
+    const uid = ctx.from?.id;
+    if (!uid) {
+        await ctx.reply('Cannot identify user.');
+        return;
+    }
+    const { data: messages } = await supabase
+        .from('conversation_history')
+        .select('content')
+        .eq('telegram_id', uid)
+        .eq('role', 'assistant')
+        .order('created_at', { ascending: false })
+        .limit(1);
+    const lastReply = messages?.[0]?.content;
+    if (!lastReply) {
+        await ctx.reply('Ask me a question first, then /voice to hear the reply.');
+        return;
+    }
+    await ctx.reply('🎙️ Generating voice...');
+    try {
+        const isAmharic = /[\u1200-\u137F]/.test(lastReply);
+        const audioBuffer = await textToSpeech(lastReply, isAmharic ? 'am' : 'en');
+        await ctx.replyWithVoice({ source: audioBuffer });
+    }
+    catch {
+        await ctx.reply('❌ Voice generation failed. Try again.');
+    }
+});
+bot.command('settings', async (ctx) => {
+    await ctx.reply('⚙️ <b>Settings</b>\n\n' +
+        '🎙️ Voice replies: /voice_on or /voice_off\n' +
+        '🌐 Language: /lang_en or /lang_am', { parse_mode: 'HTML' });
+});
+bot.command('voice_on', async (ctx) => {
+    if (ctx.from?.id) {
+        await supabase.from('user_profiles').update({ voice_replies: true }).eq('telegram_id', ctx.from.id);
+        await ctx.reply('🎙️ Voice replies enabled! I will reply with voice for all messages.');
+    }
+});
+bot.command('voice_off', async (ctx) => {
+    if (ctx.from?.id) {
+        await supabase.from('user_profiles').update({ voice_replies: false }).eq('telegram_id', ctx.from.id);
+        await ctx.reply('🎙️ Voice replies disabled.');
+    }
+});
 bot.on('new_chat_members', async (ctx) => {
     for (const m of ctx.message['new_chat_members'] || []) {
         if (m.is_bot)
@@ -452,6 +491,21 @@ bot.on('text', async (ctx) => {
         const reply = await aiReply(msg);
         if (uid)
             await saveMsg(uid, 'assistant', reply);
+        // Check if user wants voice replies
+        if (uid) {
+            const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('voice_replies')
+                .eq('telegram_id', uid)
+                .single();
+            if (profile?.voice_replies) {
+                await ctx.sendChatAction('record_voice');
+                const isAmharic = /[\u1200-\u137F]/.test(reply);
+                const audioBuffer = await textToSpeech(reply, isAmharic ? 'am' : 'en');
+                await ctx.replyWithVoice({ source: audioBuffer });
+                return;
+            }
+        }
         await ctx.reply(reply);
     }
     catch {
@@ -493,17 +547,9 @@ bot.on('voice', async (ctx) => {
         await ctx.reply('❌ Failed.');
     }
 });
-const port = parseInt(process.env.PORT || '10000');
-(0, http_1.createServer)((req, res) => {
-    if (req.url === '/health') {
-        res.writeHead(200).end('OK');
-        return;
-    }
-    res.writeHead(200).end('GETEDIL-OS-BOT');
-}).listen(port, () => console.log('🏥 Health :' + port));
-// Daily learning tips at 9 AM
+// === SCHEDULED TASKS ===
 node_cron_1.default.schedule('0 9 * * *', async () => {
-    console.log('🌅 Sending daily tips...');
+    console.log('🌅 Scheduled daily tips...');
     try {
         const { sendDailyTips } = await import('./cron/daily-tip.js');
         await sendDailyTips();
@@ -512,7 +558,6 @@ node_cron_1.default.schedule('0 9 * * *', async () => {
         console.error('Daily tips failed:', e);
     }
 });
-// Scrape jobs every 6 hours
 node_cron_1.default.schedule('0 */6 * * *', async () => {
     console.log('🔍 Scheduled job scraping...');
     try {
@@ -523,6 +568,53 @@ node_cron_1.default.schedule('0 */6 * * *', async () => {
         console.error('Job scraping failed:', e);
     }
 });
+// === HEALTH + ANALYTICS SERVER ===
+const port = parseInt(process.env.PORT || '10000');
+(0, http_1.createServer)(async (req, res) => {
+    if (req.url === '/health') {
+        res.writeHead(200).end('OK');
+        return;
+    }
+    if (req.url === '/analytics') {
+        try {
+            const { count: totalUsers } = await supabase
+                .from('user_profiles')
+                .select('*', { count: 'exact', head: true });
+            const { count: activeToday } = await supabase
+                .from('user_profiles')
+                .select('*', { count: 'exact', head: true })
+                .gte('last_active_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+            const { count: totalMessages } = await supabase
+                .from('conversation_history')
+                .select('*', { count: 'exact', head: true });
+            const { count: messagesToday } = await supabase
+                .from('conversation_history')
+                .select('*', { count: 'exact', head: true })
+                .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+            const { count: spamBlocked } = await supabase
+                .from('spam_logs')
+                .select('*', { count: 'exact', head: true });
+            const { count: totalJobs } = await supabase
+                .from('jobs')
+                .select('*', { count: 'exact', head: true });
+            const analytics = {
+                users: { total: totalUsers || 0, activeToday: activeToday || 0 },
+                messages: { total: totalMessages || 0, today: messagesToday || 0 },
+                spamBlocked: spamBlocked || 0,
+                jobs: totalJobs || 0,
+                timestamp: new Date().toISOString()
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(analytics, null, 2));
+            return;
+        }
+        catch {
+            res.writeHead(500).end('Error');
+            return;
+        }
+    }
+    res.writeHead(200).end('GETEDIL-OS-BOT');
+}).listen(port, () => console.log('🏥 Health + Analytics :' + port));
 bot.launch({ dropPendingUpdates: true })
     .then(() => console.log('✅ Polling connected'))
     .catch(() => setTimeout(() => bot.launch({ dropPendingUpdates: true }), 5000));
@@ -540,7 +632,7 @@ process.once('SIGTERM', async () => {
     catch { }
     process.exit(0);
 });
-// Helper function referenced in middleware
+// Helper function
 async function getOrCreateUser(telegramUser) {
     const { data } = await supabase
         .from('user_profiles')
