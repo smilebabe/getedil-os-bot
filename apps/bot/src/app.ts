@@ -9,6 +9,28 @@ import WebSocket from 'ws';
 import cron from 'node-cron';
 import { EdgeTTS } from 'edge-tts-universal';
 
+async function sendWithRetry(ctx: any, filePath: string, maxRetries = 3): Promise<void> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await ctx.replyWithDocument({ source: filePath }, { caption: '🔊 Voice message' });
+      console.log(`[TTS] Sent successfully on attempt ${i + 1}`);
+      return;
+    } catch (err: any) {
+      const isLastAttempt = i === maxRetries - 1;
+      const delay = Math.pow(2, i) * 1000; // 1s, 2s, 4s
+      
+      console.error(`[TTS] Attempt ${i + 1} failed:`, err.message || err);
+      
+      if (isLastAttempt) {
+        throw new Error(`Failed after ${maxRetries} attempts: ${err.message}`);
+      }
+      
+      console.log(`[TTS] Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
 
@@ -501,14 +523,14 @@ bot.command('voice', async (ctx) => {
   
   await ctx.reply('🎙️ Generating voice...');
   
-  let tempPath: string | null = null;
+    let tempPath: string | null = null;
   
   try {
     const isAmharic = /[\u1200-\u137F]/.test(lastReply);
     tempPath = await textToSpeech(lastReply, isAmharic ? 'am' : 'en');
     
-    // Send as document - more reliable than sendAudio for uploads
-    await ctx.replyWithDocument({ source: tempPath }, { caption: '🔊 Voice message' });
+    // Send with retry logic
+    await sendWithRetry(ctx, tempPath);
     console.log('[TTS] Document sent successfully');
   } catch (err) {
     console.error('[TTS] Send error:', err);
@@ -574,14 +596,14 @@ bot.on('text', async (ctx) => {
         .eq('telegram_id', uid)
         .single();
       
-      if (profile?.voice_replies) {
+            if (profile?.voice_replies) {
         await ctx.sendChatAction('record_voice');
         const isAmharic = /[\u1200-\u137F]/.test(reply);
         let tempPath: string | null = null;
         
         try {
           tempPath = await textToSpeech(reply, isAmharic ? 'am' : 'en');
-          await ctx.replyWithDocument({ source: tempPath }, { caption: '🔊 Voice message' });
+          await sendWithRetry(ctx, tempPath);
         } catch (err) {
           console.error('[TTS] Auto voice error:', err);
         } finally {
